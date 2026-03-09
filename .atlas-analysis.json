@@ -1,0 +1,103 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "WebTorrent",
+  "projectDescription": "Streaming torrent client for Node.js and the browser using WebRTC",
+  "theme": "palm",
+  "primaryColor": "#040404",
+  "lightColor": "#ec4158",
+  "darkColor": "#353c44",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/browser-usage",
+              "guides/nodejs-usage",
+              "guides/streaming",
+              "guides/creating-torrents",
+              "guides/web-seeds"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/bep-support",
+              "advanced/extensions",
+              "advanced/performance",
+              "advanced/security"
+            ]
+          },
+          {
+            "group": "Resources",
+            "pages": [
+              "resources/faq",
+              "resources/examples",
+              "resources/migration",
+              "resources/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/webtorrent",
+              "api/torrent",
+              "api/file"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "api/server",
+              "api/events",
+              "api/options"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Streaming torrent downloads",
+    "Browser and Node.js support",
+    "WebRTC peer-to-peer networking",
+    "DHT, tracker, and LSD peer discovery",
+    "Magnet URI support",
+    "Web seed support",
+    "Video and audio streaming",
+    "BitTorrent protocol extensions"
+  ],
+  "publicApiSurface": [
+    "WebTorrent",
+    "WebTorrent.WEBRTC_SUPPORT",
+    "client.add()",
+    "client.seed()",
+    "client.remove()",
+    "client.destroy()",
+    "client.on()",
+    "torrent.files",
+    "torrent.download()",
+    "torrent.pause()",
+    "torrent.resume()",
+    "torrent.destroy()",
+    "file.createReadStream()",
+    "file.getBuffer()",
+    "file.getBlobURL()",
+    "file.streamTo()"
+  ]
+}
