@@ -1,0 +1,156 @@
+---
+title: 'FAQ'
+description: 'Frequently asked questions about WebTorrent'
+icon: 'question'
+---
+
+## What is WebTorrent?
+
+**WebTorrent** is the first torrent client that works in the **browser**. It's written completely in JavaScript – the language of the web – and uses **WebRTC** for true peer-to-peer transport. No browser plugin, extension, or installation is required.
+
+Using open web standards, WebTorrent connects website users together to form a distributed, decentralized browser-to-browser network for efficient file transfer.
+
+## Why is this cool?
+
+Imagine a video site like YouTube, where **visitors help to host the site's content**. The more people that use a WebTorrent-powered website, the faster and more resilient it becomes.
+
+Browser-to-browser communication **cuts out the middle-man** and lets people communicate on their own terms. No more client/server – just a network of peers, all equal. WebTorrent is the first step in the journey to redecentralize the Web.
+
+<Note>
+"The way we code the Web will determine the way we live online. So we need to bake our values into our code. Freedom of expression needs to be baked into our code. Privacy should be baked into our code. Universal access to all knowledge. But right now, those values are not embedded in the Web."
+
+— Brewster Kahle, Founder of the Internet Archive
+</Note>
+
+## What are some use cases for WebTorrent?
+
+<AccordionGroup>
+  <Accordion title="Peer-Assisted Delivery">
+    One of the most exciting uses for WebTorrent is **peer-assisted delivery**. Non-profit projects like Wikipedia and the Internet Archive could reduce bandwidth and hosting costs by letting visitors chip in. Popular content is served browser-to-browser, quickly and cheaply. Rarely-accessed content is served reliably over HTTP from the origin server.
+  </Accordion>
+
+  <Accordion title="Business Use Cases">
+    WebTorrent has significant business potential to radically change the traditional notion of client-server, with applications for:
+    - CDN optimization
+    - App delivery
+    - Internal infrastructure
+    - External closed user communications
+  </Accordion>
+
+  <Accordion title="Live Streaming">
+    WebTorrent can be used to build live streaming solutions. The content producer can take segments of live content and create torrents for them. Viewers follow this "feed" of torrent files and download the content sequentially.
+  </Accordion>
+</AccordionGroup>
+
+## How does WebTorrent work?
+
+The WebTorrent protocol works just like BitTorrent protocol, except it uses **WebRTC** instead of TCP/uTP as the transport protocol.
+
+In order to support WebRTC's connection model, we made a few changes to the tracker protocol. Therefore, a browser-based WebTorrent client or **"web peer"** can only connect to other clients that support WebTorrent/WebRTC.
+
+Once peers are connected, the wire protocol used to communicate is exactly the same as in normal BitTorrent. This should make it easy for existing popular torrent clients like Transmission and uTorrent to add support for WebTorrent.
+
+<Note>
+**Vuze** already has support for WebTorrent and can connect to both normal and web peers!
+</Note>
+
+## What is WebRTC?
+
+WebRTC (Web Real-Time Communication) is an API defined by the World Wide Web Consortium (W3C) to support browser-to-browser applications like voice calling, video chat, and P2P file sharing without the need for browser plugins.
+
+WebRTC's `RTCDataChannel` API allows the transfer of data directly from one browser to another. This is distinct from `WebSocket` and `XMLHttpRequest` because these are designed for communication to/from a server (client-server model). Data Channels allow for **direct browser-to-browser connections**.
+
+### Browser Support
+
+WebRTC works everywhere, and browser support is excellent:
+- **Chrome** (Desktop and Android)
+- **Firefox** (Desktop and Android)
+- **Opera** (Desktop and Android)
+- **Microsoft Edge**
+- **Safari**
+
+## Can WebTorrent clients connect to normal BitTorrent clients?
+
+In the browser, WebTorrent can only download torrents that are seeded by a WebRTC-capable torrent client.
+
+Right now, we know of these WebRTC-capable torrent clients:
+
+- **[WebTorrent Desktop](https://webtorrent.io/desktop)** - Open source streaming torrent client for Mac, Windows, and Linux
+- **[Vuze](https://wiki.vuze.com/w/WebTorrent)** - Powerful, full-featured torrent client
+- **[webtorrent-hybrid](https://npmjs.com/package/webtorrent-hybrid)** - Node.js package (command line and API)
+- **[Instant.io](https://instant.io)** - Simple WebTorrent client in a website
+- **More coming soon!**
+
+### About webtorrent-hybrid
+
+In Node.js, `webtorrent-hybrid` can download torrents from WebRTC peers or TCP peers (i.e. normal peers). You can use WebTorrent as a command line program, or programmatically as a Node.js package.
+
+To install `webtorrent-hybrid`:
+
+```bash
+npm install webtorrent-hybrid -g
+```
+
+<Note>
+If you just need to use WebTorrent in the browser (where WebRTC is available natively), use `webtorrent` instead, which is faster to install.
+</Note>
+
+## Can WebTorrent clients on different websites connect to each other?
+
+Yes! **WebTorrent works across the entire web.** WebTorrent clients running on one domain can connect to clients on any other domain. No silos!
+
+The same-origin policy does not apply to WebRTC connections since they are not client-to-server. Browser-to-browser connections require the cooperation of both websites (i.e. the WebTorrent script must be present on both sites).
+
+## Does WebTorrent leak your IP address when using a VPN?
+
+**No.**
+
+WebRTC data channels do not allow a website to discover your public IP address when there is a VPN in use. The WebRTC discovery process will just find your VPN's IP address and the local network IP address.
+
+Local IP addresses (e.g. 10.x.x.x or 192.168.x.x) can potentially be used to "fingerprint" your browser and identify you across different sites, like a third-party tracking cookie. However, this is a separate issue from exposing your real public IP address.
+
+<Warning>
+At one point in time, WebRTC did have an issue where it would allow a website to discover your true public IP address, but this was fixed a long time ago. This unfortunate misinformation keeps bouncing around the internet.
+</Warning>
+
+If you have a VPN enabled, then WebRTC data channels will not connect to peers using your true public IP address, nor will it be revealed to the JavaScript running on the webpage.
+
+## Why wasn't WebTorrent designed as an entirely-new protocol?
+
+BitTorrent is the most successful, most widely-deployed P2P protocol in existence. It works really well. Our goal with WebTorrent was to bring BitTorrent to the web in a way that interoperates with the existing torrent network.
+
+Re-inventing the protocol would have made WebTorrent fundamentally incompatible with existing clients and prevented adoption. The way we've done it is better: the wire protocol is exactly the same, but there's now a new way to connect to peers: WebRTC, in addition to the existing TCP and uTP.
+
+## Is it possible to do live streaming with WebTorrent?
+
+WebTorrent cannot do live streaming out-of-the-box, however you can build a live streaming solution on top of WebTorrent.
+
+Torrents are immutable. That means that once a torrent file is created, it cannot be changed without changing the info hash. So, how could one get around this limitation?
+
+A naive approach would be this: The content producer could take every 10 seconds of live content and create a torrent for it. Viewers would follow this "feed" of torrent files (or info hashes) and download the content sequentially. Streamers would be around 10-20 seconds behind the live stream.
+
+## Who builds WebTorrent?
+
+WebTorrent is built by [Feross Aboukhadijeh](http://feross.org) and hundreds of open source contributors. The WebTorrent project is managed by [WebTorrent, LLC](https://webtorrent.io), as a non-profit project.
+
+Feross's other projects include:
+- [JavaScript Standard Style](http://standardjs.com)
+- [PeerCDN](http://www.peercdn.com) (sold to Yahoo)
+- [Study Notes](https://www.apstudynotes.org)
+- [YouTube Instant](http://ytinstant.com)
+
+## What is WebTorrent, LLC?
+
+"WebTorrent, LLC" is the legal entity that owns WebTorrent. WebTorrent is, and always will be, **non-profit, open source, and free software**.
+
+There are no plans to make a profit from WebTorrent.
+
+## How can I contribute?
+
+WebTorrent is an **OPEN Open Source Project**. Individuals who make significant and valuable contributions are given commit access to the project to contribute as they see fit.
+
+There are many ways to help out:
+
+- Report bugs by [creating a GitHub issue](https://github.com/webtorrent/webtorrent/issues)
+- Write code to [fix an open issue](https://github.com/webtorrent/webtorrent/issues?state=open)
+- Join us in [Gitter](https://gitter.im/webtorrent/webtorrent) or on IRC at `#webtorrent` (freenode)

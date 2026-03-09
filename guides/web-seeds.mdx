@@ -1,0 +1,496 @@
+---
+title: Using Web Seeds
+description: Learn how to add HTTP/HTTPS fallback sources to your torrents with BEP19 web seeds
+---
+
+Web seeds are HTTP/HTTPS servers that provide torrent content as a fallback or supplement to peer-to-peer downloads. They implement [BEP19](http://www.bittorrent.org/beps/bep_0019.html) and allow torrents to be downloaded even when no peers are available.
+
+## What are Web Seeds?
+
+Web seeds provide several benefits:
+
+- **Guaranteed availability**: Content remains accessible even with no peers
+- **Initial seeding**: Helps bootstrap new torrents before peers arrive
+- **Performance**: HTTP servers can often provide faster downloads than peers
+- **CDN integration**: Use CDN infrastructure for torrent content
+- **Hybrid delivery**: Combine P2P and HTTP for optimal performance
+
+<Note>
+  WebTorrent automatically manages web seed connections and switches between P2P and HTTP sources based on availability and performance.
+</Note>
+
+## Adding Web Seeds to Torrents
+
+When creating a torrent, you can specify HTTP/HTTPS URLs as web seeds:
+
+### Basic Web Seed
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+client.seed('/path/to/file.mp4', {
+  name: 'My Video',
+  urlList: [
+    'https://example.com/files/'
+  ]
+}, torrent => {
+  console.log('Torrent created with web seed')
+  console.log('Web seeds:', torrent.urlList)
+})
+```
+
+### Multiple Web Seeds
+
+```javascript
+client.seed(files, {
+  name: 'My Files',
+  urlList: [
+    'https://cdn1.example.com/files/',
+    'https://cdn2.example.com/backup/',
+    'https://mirror.example.org/torrents/'
+  ]
+}, torrent => {
+  console.log('Added', torrent.urlList.length, 'web seeds')
+})
+```
+
+### Web Seed URL Format
+
+The web seed URL should be a base path where files can be accessed:
+
+```javascript
+// If your torrent contains: video.mp4
+// Web seed URL: https://example.com/files/
+// Full URL will be: https://example.com/files/video.mp4
+
+client.seed('/path/to/video.mp4', {
+  urlList: ['https://example.com/files/']
+})
+```
+
+For torrents with multiple files:
+
+```javascript
+// Torrent contains:
+//   - folder/video1.mp4
+//   - folder/video2.mp4
+// Web seed URL: https://example.com/content/
+// Full URLs will be:
+//   - https://example.com/content/folder/video1.mp4
+//   - https://example.com/content/folder/video2.mp4
+
+client.seed('/path/to/folder', {
+  urlList: ['https://example.com/content/']
+})
+```
+
+## Using Torrents with Web Seeds
+
+When you download a torrent that has web seeds, WebTorrent automatically uses them:
+
+```javascript
+const magnetURI = 'magnet:?xt=urn:btih:...&ws=https://example.com/files/'
+
+client.add(magnetURI, torrent => {
+  console.log('Web seeds available:', torrent.urlList)
+  
+  torrent.on('download', bytes => {
+    console.log('Downloaded from P2P or web seeds')
+  })
+})
+```
+
+### Checking Web Seed Status
+
+```javascript
+client.add(magnetURI, torrent => {
+  torrent.on('wire', (wire, addr) => {
+    console.log('Connection type:', wire.type)
+    // Types: 'webrtc', 'tcpIncoming', 'tcpOutgoing', 'webSeed'
+    
+    if (wire.type === 'webSeed') {
+      console.log('Connected to web seed')
+    }
+  })
+})
+```
+
+## Adding Web Seeds to Existing Torrents
+
+You can add web seeds dynamically to torrents you're downloading:
+
+```javascript
+client.add(magnetURI, torrent => {
+  // Add a web seed after torrent is added
+  torrent.addWebSeed('https://backup-server.com/files/')
+  
+  console.log('Web seeds:', torrent.urlList)
+})
+```
+
+### Add When No Peers Available
+
+```javascript
+client.add(magnetURI, torrent => {
+  torrent.on('noPeers', announceType => {
+    console.log('No peers found, adding web seed')
+    torrent.addWebSeed('https://fallback-server.com/files/')
+  })
+})
+```
+
+## Configuring Web Seeds
+
+Control web seed behavior with client options:
+
+```javascript
+const client = new WebTorrent({
+  webSeeds: true,        // Enable web seeds (default: true)
+  maxWebConns: 4         // Max simultaneous web seed connections per torrent
+})
+```
+
+Or per-torrent:
+
+```javascript
+client.add(magnetURI, {
+  maxWebConns: 8,        // More connections = faster from web seeds
+  urlList: [             // Add additional web seeds
+    'https://my-server.com/files/'
+  ]
+}, torrent => {
+  console.log('Configured web seed connections')
+})
+```
+
+## Setting Up a Web Seed Server
+
+### Requirements
+
+<Steps>
+  <Step title="Host the files">
+    Upload your torrent files to a web server with the same directory structure as the torrent.
+  </Step>
+  
+  <Step title="Enable CORS (for browser clients)">
+    Configure your server to send CORS headers:
+    
+    ```
+    Access-Control-Allow-Origin: *
+    Access-Control-Allow-Methods: GET, HEAD, OPTIONS
+    Access-Control-Allow-Headers: Range
+    ```
+  </Step>
+  
+  <Step title="Support range requests">
+    Enable HTTP range requests for seeking support:
+    
+    ```
+    Accept-Ranges: bytes
+    ```
+  </Step>
+</Steps>
+
+### Nginx Configuration
+
+```nginx
+server {
+    listen 80;
+    server_name webseed.example.com;
+    
+    location /files/ {
+        alias /var/www/torrents/;
+        
+        # Enable CORS
+        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Methods "GET, HEAD, OPTIONS";
+        add_header Access-Control-Allow-Headers "Range";
+        
+        # Support range requests
+        add_header Accept-Ranges bytes;
+        
+        # Handle preflight requests
+        if ($request_method = OPTIONS) {
+            return 204;
+        }
+    }
+}
+```
+
+### Node.js Express Server
+
+```javascript
+import express from 'express'
+import cors from 'cors'
+import path from 'path'
+
+const app = express()
+
+// Enable CORS for all origins
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'HEAD', 'OPTIONS'],
+  allowedHeaders: ['Range']
+}))
+
+// Serve files with range request support
+app.use('/files', express.static('/path/to/torrent/files', {
+  acceptRanges: true,
+  lastModified: true
+}))
+
+app.listen(3000, () => {
+  console.log('Web seed server listening on http://localhost:3000')
+})
+```
+
+### Python HTTP Server
+
+```python
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+import os
+
+class CORSRequestHandler(SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Range')
+        self.send_header('Accept-Ranges', 'bytes')
+        super().end_headers()
+    
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.end_headers()
+
+os.chdir('/path/to/torrent/files')
+server = HTTPServer(('', 8000), CORSRequestHandler)
+print('Web seed server running on http://localhost:8000')
+server.serve_forever()
+```
+
+## Complete Web Seed Example
+
+Create and seed a torrent with web seed support:
+
+```javascript
+import WebTorrent from 'webtorrent'
+import express from 'express'
+import cors from 'cors'
+import path from 'path'
+
+const client = new WebTorrent()
+
+// Set up web seed server
+const app = express()
+app.use(cors({ origin: '*' }))
+app.use('/files', express.static('/path/to/files', { acceptRanges: true }))
+
+const server = app.listen(3000, () => {
+  console.log('Web seed server: http://localhost:3000/files/')
+  
+  // Create torrent with web seed
+  client.seed('/path/to/files/video.mp4', {
+    name: 'My Video',
+    urlList: ['http://localhost:3000/files/'],
+    announceList: [
+      ['wss://tracker.btorrent.xyz'],
+      ['wss://tracker.openwebtorrent.com']
+    ]
+  }, torrent => {
+    console.log('\nTorrent created!')
+    console.log('Name:', torrent.name)
+    console.log('Info hash:', torrent.infoHash)
+    console.log('Web seeds:', torrent.urlList)
+    console.log('\nMagnet URI:')
+    console.log(torrent.magnetURI)
+    console.log('\nSeeding via P2P + web seed...')
+    
+    // Monitor downloads from web seed
+    torrent.on('wire', (wire, addr) => {
+      if (wire.type === 'webSeed') {
+        console.log('Peer connected via web seed')
+      }
+    })
+  })
+})
+```
+
+## Browser Considerations
+
+<Warning>
+  When using web seeds in the browser, the web seed server **must** have proper CORS headers. Without CORS, browsers will block the requests.
+</Warning>
+
+### Testing CORS
+
+```javascript
+// Test if web seed has proper CORS
+fetch('https://example.com/files/test.mp4', {
+  method: 'HEAD',
+  headers: { 'Range': 'bytes=0-1' }
+})
+  .then(response => {
+    console.log('CORS headers:', response.headers.get('access-control-allow-origin'))
+    console.log('Range support:', response.headers.get('accept-ranges'))
+  })
+  .catch(err => {
+    console.error('CORS error:', err)
+  })
+```
+
+## Performance Optimization
+
+### Load Balancing
+
+Use multiple web seeds for better performance:
+
+```javascript
+client.seed(files, {
+  urlList: [
+    'https://cdn1.example.com/files/',
+    'https://cdn2.example.com/files/',
+    'https://cdn3.example.com/files/'
+  ],
+  maxWebConns: 6  // 2 connections per web seed
+})
+```
+
+### Geographic Distribution
+
+```javascript
+const webSeeds = [
+  'https://us-east.example.com/files/',  // US East Coast
+  'https://us-west.example.com/files/',  // US West Coast
+  'https://eu.example.com/files/',       // Europe
+  'https://asia.example.com/files/'      // Asia
+]
+
+client.seed(files, {
+  urlList: webSeeds,
+  maxWebConns: 8
+})
+```
+
+### Fallback Strategy
+
+```javascript
+client.add(magnetURI, torrent => {
+  // Primary: Try P2P first
+  console.log('Trying P2P download...')
+  
+  // After 30 seconds, add web seed if slow
+  setTimeout(() => {
+    if (torrent.downloadSpeed < 100000) {  // Less than 100 KB/s
+      console.log('Slow P2P, adding web seed')
+      torrent.addWebSeed('https://backup.example.com/files/')
+    }
+  }, 30000)
+})
+```
+
+## Magnet URI with Web Seeds
+
+Web seeds can be included in magnet URIs using the `ws` parameter:
+
+```javascript
+const magnetURI = [
+  'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10',
+  '&dn=Sintel',
+  '&ws=https://webtorrent.io/torrents/',
+  '&ws=https://backup.example.com/files/',
+  '&tr=wss://tracker.btorrent.xyz'
+].join('')
+
+client.add(magnetURI, torrent => {
+  console.log('Web seeds from magnet:', torrent.urlList)
+})
+```
+
+## Monitoring Web Seed Usage
+
+Track which sources are being used:
+
+```javascript
+client.add(magnetURI, torrent => {
+  const stats = {
+    p2p: 0,
+    webSeed: 0
+  }
+  
+  torrent.on('wire', (wire, addr) => {
+    wire.on('download', bytes => {
+      if (wire.type === 'webSeed') {
+        stats.webSeed += bytes
+      } else {
+        stats.p2p += bytes
+      }
+    })
+  })
+  
+  setInterval(() => {
+    console.log('Downloaded from P2P:', (stats.p2p / 1024 / 1024).toFixed(2), 'MB')
+    console.log('Downloaded from web seeds:', (stats.webSeed / 1024 / 1024).toFixed(2), 'MB')
+    const total = stats.p2p + stats.webSeed
+    if (total > 0) {
+      console.log('Web seed ratio:', ((stats.webSeed / total) * 100).toFixed(1) + '%')
+    }
+  }, 5000)
+})
+```
+
+## Best Practices
+
+<Tip>
+  Follow these best practices for optimal web seed performance:
+</Tip>
+
+1. **Use CDNs**: Host web seeds on CDN infrastructure for global performance
+2. **Multiple seeds**: Provide 2-3 web seeds for redundancy
+3. **Keep files synchronized**: Ensure web seed content exactly matches torrent
+4. **Monitor availability**: Check that web seeds remain accessible
+5. **Set proper headers**: Always configure CORS and range request support
+6. **Use HTTPS**: Prefer HTTPS for security (required for some browsers)
+7. **Rate limiting**: Implement rate limiting on web seed servers if needed
+
+## Troubleshooting
+
+### Web Seeds Not Working
+
+```javascript
+client.add(magnetURI, torrent => {
+  // Check if web seeds are configured
+  console.log('Web seeds:', torrent.urlList)
+  
+  // Check if web seeds are enabled
+  console.log('Web seeds enabled:', client.enableWebSeeds)
+  
+  // Monitor for errors
+  torrent.on('warning', err => {
+    console.warn('Warning:', err.message)
+  })
+  
+  torrent.on('error', err => {
+    console.error('Error:', err.message)
+  })
+})
+```
+
+### CORS Issues
+
+If web seeds aren't working in the browser:
+
+1. Check browser console for CORS errors
+2. Verify server sends proper CORS headers
+3. Test with `curl` or browser dev tools
+4. Ensure preflight OPTIONS requests are handled
+
+### File Not Found
+
+If web seed returns 404:
+
+1. Verify file path matches torrent structure exactly
+2. Check URL encoding for special characters
+3. Ensure trailing slash on base URL
+4. Test direct URL access in browser

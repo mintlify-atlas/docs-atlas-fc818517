@@ -1,0 +1,587 @@
+---
+title: 'Security Considerations'
+description: 'Security best practices, privacy features, and threat mitigation for WebTorrent applications'
+---
+
+Security is critical when building P2P applications. WebTorrent provides several features to help you protect users, handle untrusted content safely, and maintain privacy. This guide covers security best practices for both Node.js and browser environments.
+
+## Privacy Features
+
+### Private Torrents
+
+Private torrents prevent DHT and PEX sharing, ensuring peers are only discovered through trackers:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+// Torrent files with private flag are automatically handled
+client.add('private.torrent', torrent => {
+  console.log('Private torrent:', torrent.private) // true
+  // DHT and PEX are automatically disabled
+})
+
+// Manually mark a torrent as private
+client.add(magnetURI, {
+  private: true // disable DHT and PEX
+})
+```
+
+<Info>
+  Private torrents comply with BEP 27 and are commonly used by private tracker communities to maintain control over their swarms.
+</Info>
+
+### IP Blocklists
+
+Block connections from known malicious IPs, copyright trolls, or surveillance entities:
+
+```javascript
+// Node.js only
+const client = new WebTorrent({
+  blocklist: [
+    'https://example.com/blocklist.txt',
+    'https://mirror.example.com/blocklist.gz'
+  ]
+})
+
+// Or use a local file
+const client2 = new WebTorrent({
+  blocklist: './path/to/blocklist.txt'
+})
+
+// Or provide an array of IPs/ranges
+const client3 = new WebTorrent({
+  blocklist: [
+    '1.2.3.4',
+    '10.0.0.0/8',
+    '192.168.0.0/16'
+  ]
+})
+```
+
+<Accordion title="Blocklist Format">
+  Blocklists should contain one IP address or CIDR range per line:
+  
+  ```
+  # Comments start with #
+  1.2.3.4
+  5.6.7.0/24
+  10.0.0.0/8
+  192.168.1.100-192.168.1.200
+  ```
+  
+  Popular blocklists:
+  - [I-Blocklist](https://www.iblocklist.com/)
+  - [Bluetack](https://www.bluetack.co.uk/)
+</Accordion>
+
+<Warning>
+  Blocklists are only available in Node.js environments. Browsers cannot implement IP-level filtering.
+</Warning>
+
+### Disable Peer Discovery Methods
+
+Selectively disable peer discovery to control how peers are found:
+
+```javascript
+const client = new WebTorrent({
+  dht: false,     // disable DHT (Node.js only)
+  tracker: false, // disable all trackers
+  lsd: false,     // disable local service discovery (Node.js)
+  utPex: false    // disable peer exchange
+})
+```
+
+<CardGroup cols={2}>
+  <Card title="Maximum Privacy" icon="user-secret">
+    ```javascript
+    // Only use approved trackers
+    const client = new WebTorrent({
+      dht: false,
+      lsd: false,
+      utPex: false
+    })
+    
+    client.add(magnetURI, {
+      announce: [
+        'wss://trusted-tracker.example.com'
+      ]
+    })
+    ```
+  </Card>
+  
+  <Card title="Local Network Only" icon="wifi">
+    ```javascript
+    // Only find peers on local network
+    const client = new WebTorrent({
+      dht: false,
+      tracker: false,
+      lsd: true
+    })
+    ```
+  </Card>
+</CardGroup>
+
+## Content Security
+
+### Validate Torrent Metadata
+
+Always validate torrent metadata before processing:
+
+```javascript
+client.add(torrentId, torrent => {
+  // Validate torrent name for path traversal attacks
+  if (torrent.name.includes('..') || torrent.name.includes('/')) {
+    console.error('Suspicious torrent name:', torrent.name)
+    torrent.destroy()
+    return
+  }
+  
+  // Validate file names
+  for (const file of torrent.files) {
+    if (file.path.includes('..') || file.path.startsWith('/')) {
+      console.error('Suspicious file path:', file.path)
+      torrent.destroy()
+      return
+    }
+  }
+  
+  // Check total size
+  if (torrent.length > 10 * 1024 * 1024 * 1024) { // 10 GB
+    console.error('Torrent too large:', torrent.length)
+    torrent.destroy()
+    return
+  }
+  
+  // Torrent is safe to process
+  console.log('Validated torrent:', torrent.name)
+})
+```
+
+<Warning>
+  Never trust user-provided torrent IDs or magnet URIs. Always validate metadata after it's fetched.
+</Warning>
+
+### File Type Restrictions
+
+Restrict which file types can be downloaded:
+
+```javascript
+const ALLOWED_EXTENSIONS = ['.mp4', '.mkv', '.avi', '.webm']
+
+client.add(torrentId, torrent => {
+  // Deselect all files initially
+  torrent.files.forEach(file => file.deselect())
+  
+  // Only select allowed file types
+  torrent.files.forEach(file => {
+    const ext = file.name.substring(file.name.lastIndexOf('.'))
+    
+    if (ALLOWED_EXTENSIONS.includes(ext.toLowerCase())) {
+      file.select()
+    } else {
+      console.warn('Blocked file type:', file.name)
+    }
+  })
+})
+```
+
+### Sandboxed File Access
+
+Isolate torrent storage to prevent file system access outside designated areas:
+
+```javascript
+import path from 'path'
+import os from 'os'
+
+// Node.js: Use a dedicated download directory
+const DOWNLOAD_DIR = path.join(os.homedir(), 'WebTorrentDownloads')
+
+const client = new WebTorrent()
+
+client.add(torrentId, {
+  path: DOWNLOAD_DIR,
+  addUID: true // add infoHash to path to prevent collisions
+})
+
+// Browser: Use File System Access API with user-selected directory
+if (typeof window !== 'undefined' && window.showDirectoryPicker) {
+  const dirHandle = await window.showDirectoryPicker({
+    mode: 'readwrite'
+  })
+  
+  client.add(torrentId, {
+    rootDir: dirHandle // scoped to user-selected directory
+  })
+}
+```
+
+## Network Security
+
+### Secure WebSocket Trackers
+
+Use encrypted WebSocket connections (WSS) for tracker communication:
+
+```javascript
+client.add(magnetURI, {
+  announce: [
+    'wss://tracker.example.com:443/announce', // secure
+    // 'ws://tracker.example.com:8000/announce' // avoid unencrypted
+  ]
+})
+```
+
+<Info>
+  Always prefer WSS over WS for browser applications to prevent mixed content warnings and man-in-the-middle attacks.
+</Info>
+
+### WebRTC Security (Browser)
+
+Configure WebRTC for enhanced privacy:
+
+```javascript
+const client = new WebTorrent({
+  tracker: {
+    rtcConfig: {
+      iceServers: [
+        // Use your own STUN/TURN servers
+        { 
+          urls: 'stun:stun.yourdomain.com:3478'
+        },
+        {
+          urls: 'turn:turn.yourdomain.com:3478',
+          username: 'user',
+          credential: 'pass'
+        }
+      ],
+      // Prevent IP leaks
+      iceTransportPolicy: 'relay' // force TURN, no direct connections
+    }
+  }
+})
+```
+
+<Warning>
+  Using `iceTransportPolicy: 'relay'` prevents IP address leaks but requires TURN servers and may reduce performance.
+</Warning>
+
+### Port Security (Node.js)
+
+Control which ports are used for incoming connections:
+
+```javascript
+const client = new WebTorrent({
+  torrentPort: 6881,  // specific port for torrents
+  dhtPort: 6881,      // specific port for DHT
+})
+
+// Or let WebTorrent choose random ports
+const client2 = new WebTorrent({
+  torrentPort: 0, // random port
+  dhtPort: 0      // random port
+})
+
+// Disable port mapping to prevent UPnP/NAT-PMP exploits
+const client3 = new WebTorrent({
+  natUpnp: false,
+  natPmp: false
+})
+```
+
+<Accordion title="Firewall Configuration">
+  When running in Node.js, ensure your firewall allows:
+  
+  **Incoming:**
+  - TCP on torrentPort (for peer connections)
+  - UDP on dhtPort (for DHT)
+  
+  **Outgoing:**
+  - TCP/UDP on all ports (for connecting to peers)
+  - TCP 443 (for HTTPS trackers)
+  - TCP 80 (for HTTP web seeds)
+</Accordion>
+
+## Data Integrity
+
+### Piece Verification
+
+WebTorrent automatically verifies each piece using SHA1 hashes from the torrent metadata:
+
+```javascript
+client.add(torrentId, torrent => {
+  torrent.on('verify', (index) => {
+    console.log('Verified piece:', index)
+  })
+  
+  torrent.on('done', () => {
+    console.log('All pieces verified!')
+    console.log('Hash:', torrent.infoHash)
+  })
+})
+```
+
+<Info>
+  Verification happens automatically. Corrupted pieces are re-downloaded. Never disable verification unless you completely trust the source.
+</Info>
+
+### Manual Verification Skip
+
+Skip verification only for trusted, pre-verified data:
+
+```javascript
+// ONLY use with trusted data
+client.add(torrentId, {
+  skipVerify: true,
+  store: preloadedStore // must contain valid, verified data
+})
+```
+
+<Warning>
+  Skipping verification can lead to corrupted downloads. Only use this with data you've already verified or trust completely.
+</Warning>
+
+## Browser-Specific Security
+
+### Content Security Policy (CSP)
+
+Configure CSP headers to allow WebRTC while maintaining security:
+
+```html
+<meta http-equiv="Content-Security-Policy" 
+  content="
+    default-src 'self';
+    connect-src 'self' wss: https:;
+    worker-src 'self' blob:;
+    script-src 'self' 'wasm-unsafe-eval';
+  ">
+```
+
+### Cross-Origin Isolation
+
+Enable cross-origin isolation for better security:
+
+```javascript
+// Server-side headers (Node.js)
+response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+response.setHeader('Cross-Origin-Embedder-Policy', 'require-corp')
+
+// Then use SharedArrayBuffer safely
+const sharedBuffer = new SharedArrayBuffer(1024)
+```
+
+### Service Worker Security
+
+Secure your service worker implementation:
+
+```javascript
+// sw.js - Handle only torrents, nothing else
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url)
+  
+  // Only handle /webtorrent/ paths
+  if (!url.pathname.startsWith('/webtorrent/')) {
+    return // Let browser handle normally
+  }
+  
+  // Validate origin
+  if (url.origin !== self.location.origin) {
+    event.respondWith(new Response('Forbidden', { status: 403 }))
+    return
+  }
+  
+  // Handle torrent request
+  event.respondWith(handleTorrentRequest(event.request))
+})
+```
+
+### Iframe Sandboxing
+
+If embedding WebTorrent in an iframe, use proper sandboxing:
+
+```html
+<iframe 
+  src="/torrent-viewer.html"
+  sandbox="allow-scripts allow-same-origin"
+  allow="accelerometer; autoplay; encrypted-media; gyroscope;"></iframe>
+```
+
+## Error Handling and Logging
+
+### Secure Error Messages
+
+Never expose sensitive information in error messages:
+
+```javascript
+client.on('error', (err) => {
+  // Log full error internally
+  console.error('[Internal]', err)
+  
+  // Show generic message to user
+  displayError('An error occurred while downloading the torrent')
+})
+
+torrent.on('error', (err) => {
+  // Don't expose file paths
+  const safeMessage = err.message
+    .replace(/\/.*?\//, '...')
+    .replace(/C:\\.*?\\/, '...')
+  
+  console.error('Torrent error:', safeMessage)
+})
+```
+
+### Audit Logging
+
+Log security-relevant events:
+
+```javascript
+class SecurityLogger {
+  constructor(client) {
+    this.client = client
+    this.setupListeners()
+  }
+  
+  setupListeners() {
+    this.client.on('torrent', (torrent) => {
+      this.log('TORRENT_ADD', {
+        infoHash: torrent.infoHash,
+        name: torrent.name,
+        size: torrent.length
+      })
+      
+      torrent.on('wire', (wire, addr) => {
+        this.log('PEER_CONNECT', {
+          infoHash: torrent.infoHash,
+          address: this.sanitizeAddress(addr)
+        })
+      })
+    })
+  }
+  
+  sanitizeAddress(addr) {
+    // Remove detailed port information
+    return addr.split(':')[0] + ':***'
+  }
+  
+  log(event, data) {
+    console.log(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      event,
+      data
+    }))
+  }
+}
+
+const logger = new SecurityLogger(client)
+```
+
+## Threat Mitigation
+
+### Common Threats and Defenses
+
+<CardGroup cols={2}>
+  <Card title="Path Traversal" icon="folder">
+    **Threat:** Malicious torrent with `../../../etc/passwd` in filename
+    
+    **Defense:** Validate all file paths, use `addUID: true`, restrict download directory
+  </Card>
+  
+  <Card title="Resource Exhaustion" icon="memory">
+    **Threat:** Extremely large torrents consuming all disk space or memory
+    
+    **Defense:** Set size limits, monitor resource usage, implement quotas
+  </Card>
+  
+  <Card title="IP Address Exposure" icon="eye">
+    **Threat:** Browser WebRTC leaking real IP address
+    
+    **Defense:** Use TURN relay, configure `iceTransportPolicy`, disable WebRTC if needed
+  </Card>
+  
+  <Card title="Malicious Peers" icon="user-secret">
+    **Threat:** Peers sending corrupted data or attempting exploits
+    
+    **Defense:** Automatic piece verification, IP blocklists, connection limits
+  </Card>
+</CardGroup>
+
+### Rate Limiting
+
+Implement rate limiting to prevent abuse:
+
+```javascript
+class RateLimiter {
+  constructor(maxTorrentsPerHour = 10) {
+    this.maxTorrents = maxTorrentsPerHour
+    this.torrents = []
+  }
+  
+  canAddTorrent() {
+    const oneHourAgo = Date.now() - 3600000
+    this.torrents = this.torrents.filter(t => t > oneHourAgo)
+    
+    if (this.torrents.length >= this.maxTorrents) {
+      return false
+    }
+    
+    this.torrents.push(Date.now())
+    return true
+  }
+}
+
+const limiter = new RateLimiter(10)
+
+function addTorrent(torrentId) {
+  if (!limiter.canAddTorrent()) {
+    throw new Error('Rate limit exceeded. Try again later.')
+  }
+  
+  return client.add(torrentId)
+}
+```
+
+## Security Checklist
+
+<Accordion title="Essential Security Measures">
+  - [ ] Validate all torrent metadata before processing
+  - [ ] Restrict file paths to designated directories
+  - [ ] Use WSS (not WS) for WebSocket trackers
+  - [ ] Implement IP blocklists in Node.js
+  - [ ] Set maximum torrent sizes
+  - [ ] Enable automatic piece verification
+  - [ ] Use CSP headers in browser apps
+  - [ ] Sanitize error messages shown to users
+  - [ ] Monitor resource usage (memory, disk, bandwidth)
+  - [ ] Implement rate limiting for torrent additions
+  - [ ] Keep WebTorrent and dependencies updated
+  - [ ] Use private torrents for sensitive content
+  - [ ] Configure WebRTC privacy settings
+  - [ ] Audit log security events
+  - [ ] Test with malicious torrent samples
+</Accordion>
+
+## Responsible Development
+
+<Warning>
+  **Legal Considerations:**
+  
+  Ensure your application complies with:
+  - Copyright laws in your jurisdiction
+  - DMCA and takedown requirements
+  - Privacy regulations (GDPR, CCPA, etc.)
+  - Terms of service for trackers and hosting
+  
+  WebTorrent is a tool. How you use it is your responsibility.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Performance" icon="gauge" href="/advanced/performance">
+    Optimize while maintaining security
+  </Card>
+  <Card title="BEP Support" icon="book" href="/advanced/bep-support">
+    Understand protocol features and security implications
+  </Card>
+</CardGroup>

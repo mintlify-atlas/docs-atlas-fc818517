@@ -1,0 +1,553 @@
+---
+title: Creating and Seeding Torrents
+description: Learn how to create .torrent files and seed content with WebTorrent
+---
+
+WebTorrent makes it easy to create new torrents and seed them to the network. You can seed files from the browser or Node.js, and share content with anyone using BitTorrent.
+
+## Seeding from Node.js
+
+<Steps>
+  <Step title="Create a client">
+    ```javascript
+    import WebTorrent from 'webtorrent'
+    
+    const client = new WebTorrent()
+    ```
+  </Step>
+
+  <Step title="Seed a file or folder">
+    ```javascript
+    client.seed('/path/to/file.mp4', torrent => {
+      console.log('Seeding:', torrent.name)
+      console.log('Magnet URI:', torrent.magnetURI)
+      console.log('Info hash:', torrent.infoHash)
+    })
+    ```
+  </Step>
+
+  <Step title="Share the magnet URI">
+    The magnet URI can be shared with others to download your torrent:
+    ```javascript
+    console.log('Share this link:', torrent.magnetURI)
+    ```
+  </Step>
+</Steps>
+
+### Seeding a Single File
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+client.seed('/path/to/video.mp4', torrent => {
+  console.log('Client is seeding:', torrent.name)
+  console.log('Magnet URI:', torrent.magnetURI)
+  
+  // Keep seeding indefinitely
+  console.log('Seeding... Press Ctrl+C to stop')
+})
+```
+
+### Seeding a Folder
+
+```javascript
+client.seed('/path/to/folder', torrent => {
+  console.log('Seeding folder:', torrent.name)
+  console.log('Files:', torrent.files.length)
+  
+  torrent.files.forEach(file => {
+    console.log('  -', file.path, `(${file.length} bytes)`)
+  })
+})
+```
+
+### Seeding Multiple Files
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+const files = [
+  '/path/to/file1.mp4',
+  '/path/to/file2.mp4',
+  '/path/to/file3.mp4'
+]
+
+client.seed(files, torrent => {
+  console.log('Seeding', torrent.files.length, 'files')
+  console.log('Magnet URI:', torrent.magnetURI)
+})
+```
+
+## Seeding from the Browser
+
+In the browser, you can seed files selected by the user:
+
+<Steps>
+  <Step title="Create a file input">
+    ```html
+    <input type="file" id="fileInput" multiple>
+    <div id="status"></div>
+    ```
+  </Step>
+
+  <Step title="Handle file selection">
+    ```javascript
+    import WebTorrent from 'webtorrent'
+    
+    const client = new WebTorrent()
+    const fileInput = document.querySelector('#fileInput')
+    const status = document.querySelector('#status')
+    
+    fileInput.addEventListener('change', event => {
+      const files = event.target.files
+      
+      client.seed(files, torrent => {
+        status.innerHTML = `
+          Seeding: ${torrent.name}<br>
+          Magnet URI: <input value="${torrent.magnetURI}" readonly>
+        `
+      })
+    })
+    ```
+  </Step>
+</Steps>
+
+### Drag and Drop Seeding
+
+Use the `drag-drop` package for better UX:
+
+```javascript
+import dragDrop from 'drag-drop'
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+// When user drops files on the browser
+dragDrop('body', files => {
+  client.seed(files, torrent => {
+    console.log('Client is seeding:', torrent.infoHash)
+    
+    // Display magnet URI
+    const magnetLink = document.createElement('a')
+    magnetLink.href = torrent.magnetURI
+    magnetLink.textContent = 'Magnet Link'
+    document.body.appendChild(magnetLink)
+    
+    // Display download link for .torrent file
+    const torrentLink = document.createElement('a')
+    torrentLink.href = URL.createObjectURL(torrent.torrentFileBlob)
+    torrentLink.download = torrent.name + '.torrent'
+    torrentLink.textContent = 'Download .torrent'
+    document.body.appendChild(torrentLink)
+  })
+})
+```
+
+### Complete Browser Example
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebTorrent Seeder</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      padding: 20px;
+    }
+    #dropZone {
+      border: 3px dashed #ccc;
+      border-radius: 10px;
+      padding: 40px;
+      text-align: center;
+      margin: 20px 0;
+      cursor: pointer;
+    }
+    #dropZone.dragover {
+      background: #f0f0f0;
+      border-color: #666;
+    }
+    .torrent {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Seed Files with WebTorrent</h1>
+  <div id="dropZone">Drop files here or click to select</div>
+  <input type="file" id="fileInput" multiple style="display: none">
+  <div id="torrents"></div>
+
+  <script type="module">
+    import WebTorrent from 'https://esm.sh/webtorrent/dist/webtorrent.min.js'
+
+    const client = new WebTorrent()
+    const dropZone = document.querySelector('#dropZone')
+    const fileInput = document.querySelector('#fileInput')
+    const torrentsDiv = document.querySelector('#torrents')
+
+    // Handle file selection
+    function seedFiles(files) {
+      client.seed(files, torrent => {
+        const div = document.createElement('div')
+        div.className = 'torrent'
+        div.innerHTML = `
+          <h3>${torrent.name}</h3>
+          <p><strong>Files:</strong> ${torrent.files.length}</p>
+          <p><strong>Size:</strong> ${(torrent.length / 1024 / 1024).toFixed(2)} MB</p>
+          <p><strong>Info Hash:</strong> ${torrent.infoHash}</p>
+          <p><strong>Magnet URI:</strong><br>
+            <input type="text" value="${torrent.magnetURI}" readonly 
+                   style="width: 100%; font-size: 11px">
+          </p>
+          <p><strong>Upload:</strong> <span class="upload">0</span> KB/s</p>
+          <p><strong>Peers:</strong> <span class="peers">0</span></p>
+        `
+        torrentsDiv.appendChild(div)
+
+        // Update stats
+        const uploadSpan = div.querySelector('.upload')
+        const peersSpan = div.querySelector('.peers')
+        setInterval(() => {
+          uploadSpan.textContent = (torrent.uploadSpeed / 1024).toFixed(1)
+          peersSpan.textContent = torrent.numPeers
+        }, 1000)
+      })
+    }
+
+    // Click to select files
+    dropZone.addEventListener('click', () => fileInput.click())
+    fileInput.addEventListener('change', e => seedFiles(e.target.files))
+
+    // Drag and drop
+    dropZone.addEventListener('dragover', e => {
+      e.preventDefault()
+      dropZone.classList.add('dragover')
+    })
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover')
+    })
+
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault()
+      dropZone.classList.remove('dragover')
+      seedFiles(e.dataTransfer.files)
+    })
+  </script>
+</body>
+</html>
+```
+
+## Seeding Options
+
+Customize torrent creation with various options:
+
+```javascript
+client.seed(files, {
+  // Torrent metadata
+  name: 'My Custom Torrent Name',
+  comment: 'Created with WebTorrent',
+  createdBy: 'WebTorrent/1.0',
+  creationDate: new Date(),
+  
+  // Privacy settings
+  private: false,              // If true, disable DHT and PEX
+  
+  // Trackers
+  announceList: [
+    ['udp://tracker.opentrackr.org:1337'],
+    ['wss://tracker.btorrent.xyz']
+  ],
+  
+  // Web seeds (HTTP/HTTPS sources)
+  urlList: [
+    'https://example.com/files/'
+  ],
+  
+  // Piece length (16 KB to 16 MB, default: automatic)
+  pieceLength: 1024 * 1024,    // 1 MB pieces
+  
+  // Storage options
+  path: '/downloads',           // Download location (Node.js only)
+  skipVerify: true             // Skip hash verification (when seeding)
+}, torrent => {
+  console.log('Torrent created:', torrent.name)
+})
+```
+
+### Recommended Trackers
+
+```javascript
+const trackers = [
+  // WebSocket trackers (browser-compatible)
+  'wss://tracker.btorrent.xyz',
+  'wss://tracker.openwebtorrent.com',
+  'wss://tracker.fastcast.nz',
+  
+  // UDP trackers (Node.js only)
+  'udp://tracker.opentrackr.org:1337',
+  'udp://tracker.openbittorrent.com:6969',
+  'udp://explodie.org:6969'
+]
+
+client.seed(files, {
+  announceList: trackers.map(t => [t])
+}, torrent => {
+  console.log('Announced to trackers')
+})
+```
+
+<Note>
+  Browser peers can only use WebSocket (wss://) trackers. UDP trackers only work in Node.js.
+</Note>
+
+## Getting the .torrent File
+
+You can save the generated .torrent file:
+
+### In Node.js
+
+```javascript
+import fs from 'fs'
+
+client.seed('/path/to/file.mp4', torrent => {
+  // Get .torrent file as Buffer
+  const torrentFile = torrent.torrentFile
+  
+  // Save to disk
+  fs.writeFileSync(`${torrent.name}.torrent`, torrentFile)
+  console.log('Saved torrent file:', `${torrent.name}.torrent`)
+})
+```
+
+### In Browser
+
+```javascript
+client.seed(files, torrent => {
+  // Get .torrent file as Blob
+  const blob = torrent.torrentFileBlob
+  
+  // Create download link
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = torrent.name + '.torrent'
+  a.textContent = 'Download .torrent file'
+  document.body.appendChild(a)
+})
+```
+
+## Monitoring Seeding Progress
+
+Track upload statistics and peer connections:
+
+```javascript
+client.seed(files, torrent => {
+  console.log('Seeding started:', torrent.name)
+  
+  // Log stats every 5 seconds
+  setInterval(() => {
+    console.log('\nSeeding Stats:')
+    console.log('  Uploaded:', (torrent.uploaded / 1024 / 1024).toFixed(2), 'MB')
+    console.log('  Upload speed:', (torrent.uploadSpeed / 1024).toFixed(1), 'KB/s')
+    console.log('  Peers:', torrent.numPeers)
+    console.log('  Ratio:', torrent.ratio.toFixed(2))
+  }, 5000)
+  
+  // Monitor uploads
+  torrent.on('upload', bytes => {
+    console.log('Uploaded', bytes, 'bytes')
+  })
+  
+  // Monitor peer connections
+  torrent.on('wire', (wire, addr) => {
+    console.log('Connected to peer:', addr)
+  })
+})
+```
+
+## Hybrid Seeding (Browser + Node.js)
+
+To seed to both browser peers (WebRTC) and traditional BitTorrent clients (TCP/UDP), use `webtorrent-hybrid` in Node.js:
+
+```bash
+npm install webtorrent-hybrid
+```
+
+```javascript
+import WebTorrent from 'webtorrent-hybrid'
+
+const client = new WebTorrent()
+
+client.seed('/path/to/file.mp4', torrent => {
+  console.log('Seeding to both web peers and traditional peers')
+  console.log('Magnet URI:', torrent.magnetURI)
+  
+  torrent.on('wire', (wire, addr) => {
+    console.log('Peer type:', wire.type)  // 'webrtc', 'tcpOutgoing', etc.
+  })
+})
+```
+
+<Tip>
+  Use `webtorrent-hybrid` to make your Node.js seeds accessible to browser-based WebTorrent clients.
+</Tip>
+
+## Seeding from Existing Torrents
+
+You can seed existing torrents you've already downloaded:
+
+```javascript
+import fs from 'fs'
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+// Load existing .torrent file
+const torrentFile = fs.readFileSync('./existing.torrent')
+
+// Add with preloaded store
+client.add(torrentFile, {
+  path: '/path/to/existing/files',  // Where files already exist
+  skipVerify: false                  // Verify hashes
+}, torrent => {
+  console.log('Verifying existing files...')
+  
+  torrent.on('ready', () => {
+    console.log('Now seeding:', torrent.name)
+  })
+})
+```
+
+## Advanced: Custom Piece Length
+
+Choose piece length based on total size:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+function getOptimalPieceLength(totalSize) {
+  // Aim for around 1000-2000 pieces
+  const targetPieces = 1500
+  const size = totalSize / targetPieces
+  
+  // Round to power of 2 between 16 KB and 16 MB
+  const minSize = 16 * 1024        // 16 KB
+  const maxSize = 16 * 1024 * 1024 // 16 MB
+  
+  let pieceLength = minSize
+  while (pieceLength < size && pieceLength < maxSize) {
+    pieceLength *= 2
+  }
+  
+  return pieceLength
+}
+
+const files = ['/path/to/large/file.mp4']
+const totalSize = 5 * 1024 * 1024 * 1024 // 5 GB
+
+client.seed(files, {
+  pieceLength: getOptimalPieceLength(totalSize)
+}, torrent => {
+  console.log('Piece length:', torrent.pieceLength, 'bytes')
+  console.log('Total pieces:', torrent.pieces.length)
+})
+```
+
+<Note>
+  Smaller pieces = more overhead but better for slow connections. Larger pieces = less overhead but worse for seeking in video files. The default automatic selection usually works well.
+</Note>
+
+## Graceful Shutdown
+
+Properly close the client when done seeding:
+
+```javascript
+const client = new WebTorrent()
+
+client.seed(files, torrent => {
+  console.log('Seeding... Press Ctrl+C to stop')
+})
+
+// Handle shutdown
+process.on('SIGINT', () => {
+  console.log('\nStopping...')
+  client.destroy(err => {
+    if (err) console.error('Error:', err)
+    else console.log('Client destroyed')
+    process.exit(0)
+  })
+})
+```
+
+## Complete Seeding Example
+
+Full Node.js example with all features:
+
+```javascript
+import WebTorrent from 'webtorrent-hybrid'
+import fs from 'fs'
+
+const client = new WebTorrent()
+
+// Files to seed
+const files = process.argv.slice(2)
+
+if (files.length === 0) {
+  console.error('Usage: node seed.js <file1> [file2] ...')
+  process.exit(1)
+}
+
+console.log('Creating torrent...\n')
+
+client.seed(files, {
+  name: 'My Shared Files',
+  comment: 'Shared with WebTorrent',
+  announceList: [
+    ['wss://tracker.btorrent.xyz'],
+    ['wss://tracker.openwebtorrent.com'],
+    ['udp://tracker.opentrackr.org:1337']
+  ]
+}, torrent => {
+  console.log('✓ Torrent created!')
+  console.log('Name:', torrent.name)
+  console.log('Files:', torrent.files.length)
+  console.log('Size:', (torrent.length / 1024 / 1024).toFixed(2), 'MB')
+  console.log('Info Hash:', torrent.infoHash)
+  console.log('\nMagnet URI:')
+  console.log(torrent.magnetURI)
+  
+  // Save .torrent file
+  const torrentPath = `./${torrent.name}.torrent`
+  fs.writeFileSync(torrentPath, torrent.torrentFile)
+  console.log('\n✓ Saved .torrent file:', torrentPath)
+  
+  console.log('\nSeeding... Press Ctrl+C to stop\n')
+  
+  // Stats
+  setInterval(() => {
+    console.log('Uploaded:', (torrent.uploaded / 1024 / 1024).toFixed(2), 'MB')
+    console.log('Speed:', (torrent.uploadSpeed / 1024).toFixed(1), 'KB/s')
+    console.log('Peers:', torrent.numPeers)
+    console.log('Ratio:', torrent.ratio.toFixed(2))
+    console.log('---')
+  }, 5000)
+})
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\n\nShutting down...')
+  client.destroy(() => {
+    console.log('Done.')
+    process.exit(0)
+  })
+})
+```

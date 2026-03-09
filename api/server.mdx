@@ -1,0 +1,281 @@
+---
+title: Server API
+description: HTTP server for serving torrent contents
+---
+
+## Overview
+
+The WebTorrent server creates an HTTP server to serve the contents of torrents, dynamically fetching needed pieces to satisfy requests. Range requests are supported.
+
+<Note>
+  WebTorrent provides two server implementations:
+  - **NodeServer** for Node.js environments
+  - **BrowserServer** for browser environments (requires Service Worker)
+</Note>
+
+## Creating a Server
+
+### `client.createServer([opts], [force])`
+
+Creates an HTTP server for serving torrent contents. See the [WebTorrent API](/api/webtorrent) for more details on client methods.
+
+## Node.js Server
+
+### Configuration Options
+
+<ParamField path="origin" type="string" default="*">
+  Allow requests from specific origin. Set to `false` for same-origin only.
+</ParamField>
+
+<ParamField path="hostname" type="string" optional>
+  If specified, only allow requests whose Host header matches this hostname.
+</ParamField>
+
+<ParamField path="path" type="string" default="/webtorrent">
+  Base path for the server.
+</ParamField>
+
+### Usage Example
+
+```js
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+const server = client.createServer({
+  hostname: 'localhost',
+  origin: 'http://localhost:3000'
+})
+
+// Start listening on a port
+server.server.listen(3000, () => {
+  console.log('Server listening on port 3000')
+})
+
+client.add(magnetURI, torrent => {
+  console.log('Torrent added')
+  
+  // Access files via HTTP
+  const url = torrent.files[0].streamURL
+  console.log('Stream URL:', url)
+  // http://localhost:3000/webtorrent/<infoHash>/filename.mp4
+})
+
+// Later, cleanup
+server.close()
+client.destroy()
+```
+
+### URL Structure
+
+The server provides the following endpoints:
+
+<ResponseField name="/" type="GET">
+  Root endpoint (no content displayed)
+</ResponseField>
+
+<ResponseField name="/webtorrent/" type="GET">
+  Lists all torrents with links to their detail pages
+</ResponseField>
+
+<ResponseField name="/webtorrent/:infoHash" type="GET">
+  Lists all files in the torrent with links to stream/download them
+</ResponseField>
+
+<ResponseField name="/webtorrent/:infoHash/:filepath" type="GET">
+  Streams or downloads the specific file
+</ResponseField>
+
+### Methods
+
+#### `server.server.listen(port, [callback])`
+
+Start the server listening on the specified port.
+
+```js
+server.server.listen(8080, () => {
+  console.log('Server running on port 8080')
+})
+```
+
+#### `server.close([callback])`
+
+Close the server and stop accepting new requests.
+
+```js
+server.close(err => {
+  if (err) throw err
+  console.log('Server closed')
+})
+```
+
+#### `server.destroy([callback])`
+
+Destroy the server and close all open connections.
+
+```js
+server.destroy(err => {
+  if (err) throw err
+  console.log('Server destroyed')
+})
+```
+
+#### `server.address()`
+
+Get the server's address information.
+
+<ResponseField name="return" type="object">
+  Object with `address`, `family`, and `port` properties
+</ResponseField>
+
+```js
+const addr = server.address()
+console.log(`Server at ${addr.address}:${addr.port}`)
+```
+
+## Browser Server
+
+### Configuration Options
+
+<ParamField path="controller" type="ServiceWorkerRegistration" required>
+  Service worker registration
+</ParamField>
+
+<ParamField path="origin" type="string" default="*">
+  Allow requests from specific origin. Set to `false` for same-origin only.
+</ParamField>
+
+### Usage Example
+
+```js
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+// Register service worker
+const controller = await navigator.serviceWorker.register('./sw.min.js', {
+  scope: './'
+})
+
+// Wait for service worker to be ready
+await navigator.serviceWorker.ready
+
+// Create server
+client.createServer({ controller })
+
+client.add(magnetURI, torrent => {
+  const video = document.querySelector('video')
+  
+  // Stream to video element
+  const file = torrent.files[0]
+  file.streamTo(video)
+  
+  // Or use the URL directly
+  console.log('Stream URL:', file.streamURL)
+  // /webtorrent/<infoHash>/filename.mp4
+})
+
+// Later, cleanup
+client._server.close()
+client.destroy()
+```
+
+### Service Worker
+
+You can use the [official WebTorrent service worker](https://github.com/webtorrent/webtorrent/blob/master/sw.min.js) or implement the required functionality yourself:
+
+```js
+// sw.js - Service Worker implementation
+self.addEventListener('fetch', event => {
+  // Handle WebTorrent streaming requests
+  // See lib/worker.js in WebTorrent source for reference
+})
+```
+
+### Methods
+
+#### `server.close([callback])`
+
+Close the server.
+
+```js
+client._server.close(err => {
+  if (err) throw err
+  console.log('Browser server closed')
+})
+```
+
+#### `server.destroy([callback])`
+
+Destroy the server.
+
+```js
+client._server.destroy(err => {
+  if (err) throw err
+  console.log('Browser server destroyed')
+})
+```
+
+## Response Headers
+
+All file responses include the following headers:
+
+<ResponseField name="Accept-Ranges" type="string" value="bytes">
+  Indicates support for range requests
+</ResponseField>
+
+<ResponseField name="Content-Type" type="string">
+  MIME type of the file
+</ResponseField>
+
+<ResponseField name="Content-Length" type="number">
+  Size of the response body in bytes
+</ResponseField>
+
+<ResponseField name="Content-Range" type="string">
+  Present for partial content responses (206)
+</ResponseField>
+
+<ResponseField name="Cache-Control" type="string" value="no-cache, no-store, must-revalidate, max-age=0">
+  Disables caching (data is local)
+</ResponseField>
+
+<ResponseField name="Access-Control-Allow-Origin" type="string">
+  CORS header (if origin is allowed)
+</ResponseField>
+
+## CORS Support
+
+By default, the server allows all origins (`origin: '*'`). You can restrict this:
+
+```js
+// Allow specific origin
+client.createServer({
+  origin: 'https://example.com'
+})
+
+// Disable cross-origin requests
+client.createServer({
+  origin: false
+})
+```
+
+## Range Requests
+
+The server supports HTTP range requests, enabling:
+- Video/audio seeking
+- Resumable downloads
+- Partial content delivery
+
+```bash
+curl -H "Range: bytes=0-1023" \
+  http://localhost:3000/webtorrent/<infoHash>/video.mp4
+```
+
+## DLNA Support
+
+The server includes DLNA streaming headers for compatibility with DLNA devices:
+
+```
+transferMode.dlna.org: Streaming
+contentFeatures.dlna.org: DLNA.ORG_OP=01;...
+```

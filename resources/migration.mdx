@@ -1,0 +1,340 @@
+---
+title: 'Migration Guide'
+description: 'Migrate from older versions of WebTorrent to the latest version'
+icon: 'arrow-right-arrow-left'
+---
+
+## Migrating to v2.0
+
+WebTorrent v2.0 is a major release with breaking changes. This guide will help you migrate your application.
+
+<Warning>
+WebTorrent v2.0 requires Node.js 16 or later. Node.js 12 and 14 are no longer supported.
+</Warning>
+
+### Breaking Changes
+
+#### ESM Only
+
+WebTorrent v2.0 is now **ESM only**. CommonJS `require()` is no longer supported.
+
+**Before (v1.x):**
+```javascript
+const WebTorrent = require('webtorrent')
+```
+
+**After (v2.0):**
+```javascript
+import WebTorrent from 'webtorrent'
+```
+
+#### Deprecated `getBuffer()` Method
+
+The `file.getBuffer()` method has been deprecated in favor of standard Web APIs.
+
+**Before (v1.x):**
+```javascript
+file.getBuffer((err, buffer) => {
+  if (err) throw err
+  console.log(buffer)
+})
+```
+
+**After (v2.0):**
+```javascript
+// Use arrayBuffer() - returns a Promise
+const buffer = await file.arrayBuffer()
+console.log(buffer)
+
+// Or use the stream API
+const stream = file.stream()
+for await (const chunk of stream) {
+  console.log(chunk)
+}
+```
+
+#### W3C-like File API
+
+File objects now follow the W3C File API more closely:
+
+```javascript
+// New standard methods
+await file.arrayBuffer()  // Get as ArrayBuffer
+await file.text()          // Get as text string
+file.stream()              // Get ReadableStream
+await file.blob()          // Get as Blob
+```
+
+#### Storage Changes in Browser
+
+WebTorrent v2.0 uses **persistent storage** (File System Access API + IndexedDB) in the browser instead of memory-only storage.
+
+<Note>
+This means torrents can persist across browser sessions, but you need more careful cleanup.
+</Note>
+
+**Important:** Always destroy torrents when done:
+```javascript
+torrent.destroy() // Clean up storage
+```
+
+#### Render Media Deprecation
+
+The `file.renderTo()` method has been removed. Use `file.streamTo()` instead.
+
+**Before (v1.x):**
+```javascript
+file.renderTo('video')
+```
+
+**After (v2.0):**
+```javascript
+const video = document.querySelector('video')
+file.streamTo(video)
+```
+
+### New Features in v2.0
+
+#### Service Worker Support
+
+v2.0 adds first-class Service Worker support for better streaming:
+
+```javascript
+// Register service worker
+const controller = await navigator.serviceWorker.register('./sw.min.js', { 
+  scope: './' 
+})
+await navigator.serviceWorker.ready
+
+// Create server with controller
+client.createServer({ controller })
+
+// Stream to video
+file.streamTo(document.querySelector('video'))
+```
+
+#### Improved File Streaming
+
+Better performance with the new streaming architecture:
+
+```javascript
+file.on('stream', ({ stream, file, req }) => {
+  console.log(`Streaming ${file.name}`)
+  console.log(`Range: ${req.headers.range}`)
+})
+```
+
+#### Built-in WebRTC Support
+
+v2.3+ includes built-in WebRTC without needing separate packages.
+
+## Migrating from v1.9 to v2.0
+
+### Step-by-Step Migration
+
+<Steps>
+  <Step title="Update Node.js">
+    Ensure you're running Node.js 16 or later:
+    ```bash
+    node --version  # Should be v16.0.0 or higher
+    ```
+  </Step>
+  
+  <Step title="Update package.json">
+    Update your dependencies:
+    ```json
+    {
+      "type": "module",
+      "dependencies": {
+        "webtorrent": "^2.0.0"
+      }
+    }
+    ```
+  </Step>
+  
+  <Step title="Convert to ESM">
+    Replace all `require()` with `import`:
+    ```javascript
+    // Old
+    const WebTorrent = require('webtorrent')
+    const fs = require('fs')
+    
+    // New
+    import WebTorrent from 'webtorrent'
+    import fs from 'fs'
+    ```
+  </Step>
+  
+  <Step title="Update File API Calls">
+    Replace deprecated methods:
+    ```javascript
+    // Old
+    file.getBuffer((err, buf) => {
+      // ...
+    })
+    
+    // New
+    const buffer = await file.arrayBuffer()
+    ```
+  </Step>
+  
+  <Step title="Update Render Calls">
+    Use the new streaming API:
+    ```javascript
+    // Old
+    file.renderTo('video', { autoplay: true })
+    
+    // New
+    const video = document.querySelector('video')
+    file.streamTo(video)
+    video.autoplay = true
+    ```
+  </Step>
+  
+  <Step title="Test Your Application">
+    Run your test suite and verify all functionality works.
+  </Step>
+</Steps>
+
+## Version 2.x.x Changes
+
+### v2.8.0 (2025-08)
+
+- **Feature:** Updated `fs-chunk-store` to v5 for better performance
+- **Feature:** Peers stored as Map instead of Array for performance improvements
+
+### v2.7.0 (2025-08)
+
+- **Performance:** Major performance improvements with peer management
+- **Fix:** Connection count tracking
+
+### v2.6.0 (2025-04)
+
+- **Feature:** Added option to store the bitfield in the file system
+- **Performance:** Reduced memory usage for large torrents
+
+### v2.5.0 (2024-08)
+
+- **Breaking:** Dropped IndexedDB chunk store in favor of File System Access API
+- **Performance:** Significantly reduced memory usage in browser
+
+### v2.4.0 (2024-06)
+
+- **Feature:** Added `seedOutgoingConnections` option to control outbound connections when seeding
+
+```javascript
+const client = new WebTorrent({
+  seedOutgoingConnections: false // Only accept inbound connections when seeding
+})
+```
+
+### v2.3.0 (2024-05)
+
+- **Feature:** Built-in WebRTC support (no longer requires separate package)
+- **Performance:** Faster peer connections
+
+### v2.2.0 (2024-03)
+
+- **Feature:** Refactored file selections with non-overlapping data structure
+- **Performance:** Improved piece selection algorithm
+
+## Common Migration Issues
+
+<AccordionGroup>
+  <Accordion title="Error: Cannot use import outside a module">
+    Add `"type": "module"` to your `package.json`:
+    
+    ```json
+    {
+      "type": "module",
+      "name": "my-app"
+    }
+    ```
+    
+    Or rename files from `.js` to `.mjs`.
+  </Accordion>
+  
+  <Accordion title="File.getBuffer is not a function">
+    Replace with the new async methods:
+    
+    ```javascript
+    // Instead of getBuffer
+    const buffer = await file.arrayBuffer()
+    
+    // Or for Node.js Buffer
+    const buffer = Buffer.from(await file.arrayBuffer())
+    ```
+  </Accordion>
+  
+  <Accordion title="Browser storage not persisting">
+    Ensure you're properly registering the service worker:
+    
+    ```javascript
+    const controller = await navigator.serviceWorker.register('./sw.min.js', {
+      scope: './'
+    })
+    await navigator.serviceWorker.ready
+    client.createServer({ controller })
+    ```
+    
+    Make sure `sw.min.js` is served from your web server.
+  </Accordion>
+  
+  <Accordion title="ReferenceError: require is not defined">
+    You're trying to use CommonJS in an ESM context. Convert to ESM:
+    
+    ```javascript
+    // Don't use
+    const WebTorrent = require('webtorrent')
+    
+    // Use
+    import WebTorrent from 'webtorrent'
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Webpack Configuration
+
+If you're using Webpack, you may need to update your configuration for v2.0:
+
+```javascript
+// webpack.config.js
+export default {
+  resolve: {
+    fallback: {
+      // WebTorrent v2.0 requires these polyfills for browser
+      fs: false,
+      net: false,
+      tls: false
+    }
+  },
+  module: {
+    rules: [
+      {
+        test: /\.m?js$/,
+        type: 'javascript/auto',
+        resolve: {
+          fullySpecified: false
+        }
+      }
+    ]
+  }
+}
+```
+
+Or simply use the pre-built version:
+```javascript
+import WebTorrent from 'webtorrent/dist/webtorrent.min.js'
+```
+
+## Getting Help
+
+If you encounter issues during migration:
+
+- Check the [GitHub Issues](https://github.com/webtorrent/webtorrent/issues)
+- Join the [Gitter chat](https://gitter.im/webtorrent/webtorrent)
+- Visit `#webtorrent` on IRC (freenode)
+
+<Note>
+For production applications, thoroughly test your migration in a staging environment before deploying.
+</Note>

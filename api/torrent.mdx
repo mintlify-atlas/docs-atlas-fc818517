@@ -1,0 +1,343 @@
+---
+title: Torrent API
+description: Complete API reference for the Torrent class
+---
+
+## Methods
+
+### `torrent.select(start, end, [priority], [notify])`
+
+Selects a range of pieces to prioritize.
+
+<ParamField path="start" type="number" required>
+  Start piece index (inclusive)
+</ParamField>
+
+<ParamField path="end" type="number" required>
+  End piece index (inclusive)
+</ParamField>
+
+<ParamField path="priority" type="number" optional>
+  Priority level (higher = more important)
+</ParamField>
+
+<ParamField path="notify" type="function" optional>
+  Callback called when selection is updated
+</ParamField>
+
+```js
+torrent.select(0, 10, 1, () => {
+  console.log('Selection updated')
+})
+```
+
+### `torrent.deselect(start, end)`
+
+Deprioritizes a range of previously selected pieces.
+
+<ParamField path="start" type="number" required>
+  Start piece index
+</ParamField>
+
+<ParamField path="end" type="number" required>
+  End piece index
+</ParamField>
+
+```js
+torrent.deselect(0, 10)
+```
+
+### `torrent.critical(start, end)`
+
+Marks a range of pieces as critical priority to be downloaded ASAP.
+
+<ParamField path="start" type="number" required>
+  Start piece index
+</ParamField>
+
+<ParamField path="end" type="number" required>
+  End piece index
+</ParamField>
+
+```js
+torrent.critical(5, 15)
+```
+
+### `torrent.addPeer(peer)`
+
+Manually add a peer to the torrent swarm.
+
+<ParamField path="peer" type="string | SimplePeer" required>
+  Peer address string ('ip:port') or SimplePeer instance for WebRTC
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  Returns true if peer was added, false if blocked
+</ResponseField>
+
+```js
+const added = torrent.addPeer('192.168.1.100:6881')
+if (added) {
+  console.log('Peer added')
+}
+```
+
+### `torrent.addWebSeed(urlOrConn)`
+
+Add a web seed to the torrent swarm.
+
+<ParamField path="urlOrConn" type="string | object" required>
+  Web seed URL or custom connection object
+</ParamField>
+
+```js
+torrent.addWebSeed('https://example.com/files/')
+```
+
+### `torrent.removePeer(peer)`
+
+Remove a peer from the torrent swarm.
+
+<ParamField path="peer" type="string | SimplePeer" required>
+  Peer address, peer ID (hex string), or SimplePeer instance
+</ParamField>
+
+```js
+torrent.removePeer('192.168.1.100:6881')
+```
+
+### `torrent.pause()`
+
+Temporarily stop connecting to new peers.
+
+<Note>This does not pause existing connections or their data streams.</Note>
+
+```js
+torrent.pause()
+```
+
+### `torrent.resume()`
+
+Resume connecting to new peers.
+
+```js
+torrent.resume()
+```
+
+### `torrent.rescanFiles([callback])`
+
+Verify the hashes of all pieces in the store and update the bitfield.
+
+<ParamField path="callback" type="function" optional>
+  Called when scan is complete
+</ParamField>
+
+```js
+torrent.rescanFiles(err => {
+  if (err) throw err
+  console.log('Rescan complete')
+})
+```
+
+### `torrent.destroy([opts], [callback])`
+
+Remove the torrent from its client.
+
+<ParamField path="opts" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="destroyStore" type="boolean" optional>
+      If truthy, delete torrent files from disk
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="callback" type="function" optional>
+  Called when torrent is fully destroyed
+</ParamField>
+
+```js
+torrent.destroy({ destroyStore: true }, err => {
+  if (err) throw err
+  console.log('Torrent destroyed and files deleted')
+})
+```
+
+## Properties
+
+### `torrent.name`
+
+<ResponseField name="name" type="string">
+  Name of the torrent
+</ResponseField>
+
+### `torrent.infoHash`
+
+<ResponseField name="infoHash" type="string">
+  Info hash of the torrent (hex string)
+</ResponseField>
+
+### `torrent.magnetURI`
+
+<ResponseField name="magnetURI" type="string">
+  Magnet URI of the torrent
+</ResponseField>
+
+### `torrent.torrentFile`
+
+<ResponseField name="torrentFile" type="Uint8Array">
+  .torrent file of the torrent
+</ResponseField>
+
+### `torrent.torrentFileBlob`
+
+<ResponseField name="torrentFileBlob" type="Blob">
+  .torrent file as a Blob (useful for creating Blob URLs)
+</ResponseField>
+
+### `torrent.files`
+
+<ResponseField name="files" type="Array<File>">
+  Array of all files in the torrent. See [File API](/api/file).
+</ResponseField>
+
+```js
+torrent.files.forEach(file => {
+  console.log(file.name, file.length)
+})
+```
+
+### `torrent.pieces`
+
+<ResponseField name="pieces" type="Array<Piece | null>">
+  Array of all pieces. Verified pieces are null.
+</ResponseField>
+
+### `torrent.announce`
+
+<ResponseField name="announce" type="Array<string>">
+  Array of all tracker server URLs
+</ResponseField>
+
+### `torrent.length`
+
+<ResponseField name="length" type="number">
+  Sum of the file lengths (in bytes)
+</ResponseField>
+
+### `torrent.pieceLength`
+
+<ResponseField name="pieceLength" type="number">
+  Length in bytes of every piece except the last one
+</ResponseField>
+
+### `torrent.lastPieceLength`
+
+<ResponseField name="lastPieceLength" type="number">
+  Length in bytes of the last piece
+</ResponseField>
+
+### `torrent.path`
+
+<ResponseField name="path" type="string">
+  Torrent download location
+</ResponseField>
+
+### `torrent.ready`
+
+<ResponseField name="ready" type="boolean">
+  True when torrent is ready to be used (metadata is available and store is ready)
+</ResponseField>
+
+### `torrent.paused`
+
+<ResponseField name="paused" type="boolean">
+  True when torrent has stopped connecting to new peers
+</ResponseField>
+
+### `torrent.done`
+
+<ResponseField name="done" type="boolean">
+  True when all torrent files have been downloaded
+</ResponseField>
+
+### `torrent.progress`
+
+<ResponseField name="progress" type="number">
+  Torrent download progress, from 0 to 1
+</ResponseField>
+
+### `torrent.downloadSpeed`
+
+<ResponseField name="downloadSpeed" type="number">
+  Torrent download speed, in bytes/sec
+</ResponseField>
+
+### `torrent.uploadSpeed`
+
+<ResponseField name="uploadSpeed" type="number">
+  Torrent upload speed, in bytes/sec
+</ResponseField>
+
+### `torrent.downloaded`
+
+<ResponseField name="downloaded" type="number">
+  Total verified bytes received from peers
+</ResponseField>
+
+### `torrent.uploaded`
+
+<ResponseField name="uploaded" type="number">
+  Total bytes uploaded to peers
+</ResponseField>
+
+### `torrent.received`
+
+<ResponseField name="received" type="number">
+  Total bytes received from peers (including invalid data)
+</ResponseField>
+
+### `torrent.ratio`
+
+<ResponseField name="ratio" type="number">
+  Torrent seed ratio (uploaded / downloaded)
+</ResponseField>
+
+### `torrent.timeRemaining`
+
+<ResponseField name="timeRemaining" type="number">
+  Time remaining for download to complete (in milliseconds). Returns `Infinity` if download speed is 0.
+</ResponseField>
+
+### `torrent.numPeers`
+
+<ResponseField name="numPeers" type="number">
+  Number of peers in the torrent swarm
+</ResponseField>
+
+### `torrent.maxWebConns`
+
+<ResponseField name="maxWebConns" type="number">
+  Max number of simultaneous connections per web seed
+</ResponseField>
+
+### `torrent.created`
+
+<ResponseField name="created" type="Date">
+  Date of creation of the torrent
+</ResponseField>
+
+### `torrent.createdBy`
+
+<ResponseField name="createdBy" type="string">
+  Author of the torrent
+</ResponseField>
+
+### `torrent.comment`
+
+<ResponseField name="comment" type="string">
+  Comment optionally set by the author
+</ResponseField>
+
+## Events
+
+See the [Events reference](/api/events) for all torrent events.

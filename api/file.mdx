@@ -1,0 +1,342 @@
+---
+title: File API
+description: Complete API reference for the File class
+---
+
+## Methods
+
+### `file.select([priority])`
+
+Selects the file to be downloaded.
+
+<ParamField path="priority" type="number" optional>
+  Priority level for downloading this file
+</ParamField>
+
+```js
+file.select(1) // Higher priority
+```
+
+### `file.deselect()`
+
+Deselects the file, which means it won't be downloaded unless a stream is created for it.
+
+```js
+file.deselect()
+```
+
+### `file.createReadStream([opts])`
+
+Create a Node.js readable stream to the file.
+
+<ParamField path="opts" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="start" type="number" optional>
+      Start byte offset (inclusive)
+    </ParamField>
+    
+    <ParamField path="end" type="number" optional>
+      End byte offset (inclusive)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Readable">
+  Node.js readable stream
+</ResponseField>
+
+```js
+const stream = file.createReadStream({
+  start: 0,
+  end: 1000
+})
+
+stream.pipe(fs.createWriteStream('/path/to/output'))
+```
+
+### `file.stream([opts])`
+
+Create a W3C ReadableStream to the file.
+
+<ParamField path="opts" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="start" type="number" optional>
+      Start byte offset (inclusive)
+    </ParamField>
+    
+    <ParamField path="end" type="number" optional>
+      End byte offset (inclusive)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="ReadableStream">
+  W3C ReadableStream
+</ResponseField>
+
+```js
+const stream = file.stream()
+const reader = stream.getReader()
+
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
+  console.log('Received chunk:', value)
+}
+```
+
+### `file[Symbol.asyncIterator]([opts])`
+
+Create an async iterator to iterate over file chunks.
+
+<ParamField path="opts" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="start" type="number" optional>
+      Start byte offset (inclusive)
+    </ParamField>
+    
+    <ParamField path="end" type="number" optional>
+      End byte offset (inclusive)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="AsyncIterator">
+  Async iterator yielding Uint8Array chunks
+</ResponseField>
+
+```js
+for await (const chunk of file) {
+  console.log('Chunk:', chunk)
+}
+```
+
+### `file.arrayBuffer([opts])`
+
+Get the file contents as an ArrayBuffer.
+
+<ParamField path="opts" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="start" type="number" optional>
+      Start byte offset (inclusive)
+    </ParamField>
+    
+    <ParamField path="end" type="number" optional>
+      End byte offset (inclusive)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<ArrayBuffer>">
+  Promise resolving to ArrayBuffer
+</ResponseField>
+
+```js
+const data = await file.arrayBuffer()
+console.log('File data:', new Uint8Array(data))
+```
+
+### `file.blob([opts])`
+
+Get a W3C Blob object which contains the file data.
+
+<ParamField path="opts" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="start" type="number" optional>
+      Start byte offset (inclusive)
+    </ParamField>
+    
+    <ParamField path="end" type="number" optional>
+      End byte offset (inclusive)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="return" type="Promise<Blob>">
+  Promise resolving to Blob
+</ResponseField>
+
+```js
+const blob = await file.blob()
+const url = URL.createObjectURL(blob)
+window.open(url)
+```
+
+### `file.streamTo(elem)` (browser only)
+
+Sets the element source to the file's streaming URL. Requires `client.createServer()` to be called first.
+
+<ParamField path="elem" type="HTMLMediaElement" required>
+  Video or audio element
+</ParamField>
+
+<ResponseField name="return" type="HTMLMediaElement">
+  The same element passed in
+</ResponseField>
+
+```js
+const video = document.querySelector('video')
+file.streamTo(video)
+```
+
+<Note>
+Supports:
+- All major video containers (MP4, WebM, MKV, etc.)
+- All major audio containers (MP3, AAC, Opus, etc.)
+- Streaming and seeking
+- Browser native codecs only
+</Note>
+
+### `file.includes(piece)`
+
+Check if the piece number contains this file's data.
+
+<ParamField path="piece" type="number" required>
+  Piece index
+</ParamField>
+
+<ResponseField name="return" type="boolean">
+  True if file includes this piece
+</ResponseField>
+
+```js
+if (file.includes(10)) {
+  console.log('Piece 10 is part of this file')
+}
+```
+
+## Properties
+
+### `file.name`
+
+<ResponseField name="name" type="string">
+  File name as specified by the torrent
+</ResponseField>
+
+```js
+console.log(file.name) // 'video.mp4'
+```
+
+### `file.path`
+
+<ResponseField name="path" type="string">
+  File path as specified by the torrent
+</ResponseField>
+
+```js
+console.log(file.path) // 'some-folder/video.mp4'
+```
+
+### `file.length` / `file.size`
+
+<ResponseField name="length" type="number">
+  File length in bytes
+</ResponseField>
+
+```js
+console.log(file.length) // 12345678
+```
+
+### `file.type`
+
+<ResponseField name="type" type="string">
+  MIME type of the file. Defaults to `'application/octet-stream'` if unknown.
+</ResponseField>
+
+```js
+console.log(file.type) // 'video/mp4'
+```
+
+### `file.downloaded`
+
+<ResponseField name="downloaded" type="number">
+  Total verified bytes received for this file
+</ResponseField>
+
+```js
+console.log(file.downloaded) // 5000000
+```
+
+### `file.progress`
+
+<ResponseField name="progress" type="number">
+  File download progress, from 0 to 1
+</ResponseField>
+
+```js
+console.log(`${(file.progress * 100).toFixed(1)}% complete`)
+```
+
+### `file.done`
+
+<ResponseField name="done" type="boolean">
+  True when the file has been downloaded
+</ResponseField>
+
+```js
+if (file.done) {
+  console.log('File download complete!')
+}
+```
+
+### `file.streamURL`
+
+<ResponseField name="streamURL" type="string">
+  URL of the file recognized by the HTTP server. Requires `client.createServer()` to be called first.
+</ResponseField>
+
+```js
+const url = file.streamURL
+// 'http://localhost:8080/webtorrent/abc123.../video.mp4'
+
+// Create download link
+const a = document.createElement('a')
+a.href = url
+a.download = file.name
+a.textContent = 'Download'
+document.body.appendChild(a)
+```
+
+## Events
+
+### `file.on('done', callback)`
+
+Emitted when the file has been downloaded.
+
+```js
+file.on('done', () => {
+  console.log('File download complete')
+})
+```
+
+### `file.on('stream', callback)`
+
+Emitted every time the HTTP server creates a new read stream (e.g., when the user seeks a video).
+
+<Note>This is advanced functionality for manipulating streamed data.</Note>
+
+```js
+file.on('stream', ({ stream, file, req }, pipeCallback) => {
+  console.log('New stream created')
+  
+  // Optionally transform the stream
+  if (needsTranscoding) {
+    const transcoder = new SomeTranscoder()
+    pipeCallback(stream.pipe(transcoder))
+  }
+})
+```
+
+### `file.on('iterator', callback)`
+
+Emitted when the HTTP server creates an async iterator.
+
+<Note>This is advanced functionality for low-level data manipulation.</Note>
+
+```js
+file.on('iterator', ({ iterator, file, req }, transformCallback) => {
+  // Optionally transform the iterator
+  const transformed = customTransform(iterator)
+  transformCallback(transformed)
+})
+```

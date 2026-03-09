@@ -1,0 +1,578 @@
+---
+title: 'Protocol Extensions & Plugins'
+description: 'Create custom BitTorrent protocol extensions to add new features to WebTorrent'
+---
+
+WebTorrent's extension system, built on BEP 10 (Extension Protocol), allows you to add custom protocol extensions to communicate additional data between peers. This enables features like metadata exchange, peer discovery, and custom application-specific protocols.
+
+## Understanding Extensions
+
+Extensions are plugins that run on each wire (connection to a peer). They use the BitTorrent extension protocol to send and receive custom messages between peers.
+
+<Note>
+  Extensions work in both Node.js and browser environments. Peers without your extension can still connect - they simply won't use the extended features.
+</Note>
+
+## Built-in Extensions
+
+WebTorrent includes several built-in extensions that are automatically enabled:
+
+### ut_metadata Extension
+
+Enables downloading torrent metadata from peers when using magnet links (BEP 9).
+
+```javascript
+// Automatically used when adding magnet links
+const magnetURI = 'magnet:?xt=urn:btih:...'
+
+client.add(magnetURI, torrent => {
+  // Metadata was fetched via ut_metadata extension
+  console.log('Torrent name:', torrent.name)
+  console.log('Files:', torrent.files.length)
+})
+```
+
+### ut_pex Extension
+
+Enables peer exchange to discover additional peers in the swarm (BEP 11).
+
+```javascript
+// Enable/disable PEX
+const client = new WebTorrent({
+  utPex: true // default in Node.js
+})
+```
+
+<Info>
+  PEX is automatically disabled for private torrents to comply with BEP 27.
+</Info>
+
+### lt_donthave Extension
+
+Optimizes peer communication by announcing pieces that have been deleted.
+
+```javascript
+// Automatically enabled on all connections
+// No configuration needed
+```
+
+## Creating Custom Extensions
+
+Create custom extensions to add new protocol features. Extensions are classes that implement specific methods called by the wire protocol.
+
+### Basic Extension Structure
+
+```javascript
+class MyExtension {
+  constructor (wire) {
+    this._wire = wire
+    
+    // Add custom data to extended handshake
+    wire.extendedHandshake.myapp = {
+      version: '1.0.0',
+      features: ['chat', 'metadata']
+    }
+  }
+
+  // Called when remote peer's extended handshake is received
+  onExtendedHandshake (extendedHandshake) {
+    if (extendedHandshake.myapp) {
+      console.log('Peer supports myapp:', extendedHandshake.myapp.version)
+    }
+  }
+
+  // Called when a custom message is received
+  onMessage (buf) {
+    const message = JSON.parse(buf.toString())
+    console.log('Received message:', message)
+  }
+}
+
+// Extension must have a name property
+MyExtension.prototype.name = 'myapp'
+
+export default MyExtension
+```
+
+### Registering Extensions
+
+Extensions are registered per-torrent on the `wire` event:
+
+```javascript
+import WebTorrent from 'webtorrent'
+import MyExtension from './my-extension.js'
+
+const client = new WebTorrent()
+
+client.add(torrentId, torrent => {
+  torrent.on('wire', (wire, addr) => {
+    console.log('Connected to peer:', addr)
+    
+    // Register extension on this wire
+    wire.use(MyExtension)
+    
+    // Access extension instance
+    setTimeout(() => {
+      wire.myapp.sendMessage({ text: 'Hello!' })
+    }, 1000)
+  })
+})
+```
+
+## Complete Extension Example
+
+Here's a complete example of a chat extension that allows peers to exchange messages:
+
+<Accordion title="Chat Extension Implementation">
+  ```javascript
+  // chat-extension.js
+  import { EventEmitter } from 'events'
+  import bencode from 'bencode'
+
+  class ChatExtension extends EventEmitter {
+    constructor (wire) {
+      super()
+      this._wire = wire
+      this._messages = []
+
+      // Announce chat support in extended handshake
+      wire.extendedHandshake.chat = {
+        version: 1,
+        username: wire.peerId.toString('hex').substring(0, 8)
+      }
+    }
+
+    onExtendedHandshake (extendedHandshake) {
+      // Check if remote peer supports chat
+      if (!extendedHandshake.chat) {
+        return
+      }
+
+      this._remoteUsername = extendedHandshake.chat.username
+      this.emit('peer', {
+        username: this._remoteUsername,
+        version: extendedHandshake.chat.version
+      })
+    }
+
+    onMessage (buf) {
+      let message
+      try {
+        message = bencode.decode(buf)
+      } catch (err) {
+        // Invalid message, ignore
+        return
+      }
+
+      if (message.type === 'chat') {
+        const chatMessage = {
+          username: this._remoteUsername,
+          text: message.text.toString(),
+          timestamp: Date.now()
+        }
+        
+        this._messages.push(chatMessage)
+        this.emit('message', chatMessage)
+      }
+    }
+
+    // Method to send a chat message
+    sendMessage (text) {
+      if (!this._remoteUsername) {
+        throw new Error('Peer does not support chat extension')
+      }
+
+      const message = bencode.encode({
+        type: 'chat',
+        text: Buffer.from(text),
+        timestamp: Date.now()
+      })
+
+      this._wire.extended('chat', message)
+    }
+
+    // Get message history
+    getMessages () {
+      return this._messages
+    }
+  }
+
+  ChatExtension.prototype.name = 'chat'
+
+  export default ChatExtension
+  ```
+</Accordion>
+
+### Using the Chat Extension
+
+```javascript
+import WebTorrent from 'webtorrent'
+import ChatExtension from './chat-extension.js'
+
+const client = new WebTorrent()
+
+client.add(torrentId, torrent => {
+  console.log('Torrent ready')
+
+  torrent.on('wire', wire => {
+    // Add chat extension to this wire
+    wire.use(ChatExtension)
+
+    // Listen for peer connection
+    wire.chat.on('peer', peer => {
+      console.log('Peer supports chat:', peer.username)
+      
+      // Send a greeting
+      wire.chat.sendMessage('Hello from ' + wire.peerId.toString('hex').substring(0, 8))
+    })
+
+    // Listen for messages
+    wire.chat.on('message', msg => {
+      console.log(`[${msg.username}]: ${msg.text}`)
+    })
+  })
+})
+```
+
+## Extension API Reference
+
+### Constructor
+
+```javascript
+constructor (wire)
+```
+
+Called when the extension is registered on a wire.
+
+**Parameters:**
+- `wire` - The wire (peer connection) this extension is attached to
+
+**Access wire properties:**
+```javascript
+console.log('Peer ID:', wire.peerId)
+console.log('Peer address:', wire.remoteAddress)
+console.log('Am I choking peer?', wire.amChoking)
+console.log('Am I interested?', wire.amInterested)
+```
+
+### onExtendedHandshake(extendedHandshake)
+
+```javascript
+onExtendedHandshake (extendedHandshake)
+```
+
+Called when the remote peer's extended handshake is received.
+
+**Parameters:**
+- `extendedHandshake` - Object containing the remote peer's extended handshake data
+
+```javascript
+onExtendedHandshake (extendedHandshake) {
+  if (extendedHandshake.myext) {
+    console.log('Peer supports myext:', extendedHandshake.myext)
+  }
+}
+```
+
+### onMessage(buf)
+
+```javascript
+onMessage (buf)
+```
+
+Called when an extended message for this extension is received.
+
+**Parameters:**
+- `buf` - Buffer containing the message data
+
+```javascript
+onMessage (buf) {
+  try {
+    const message = JSON.parse(buf.toString())
+    console.log('Received:', message)
+  } catch (err) {
+    console.error('Invalid message:', err)
+  }
+}
+```
+
+### Sending Messages
+
+Send messages to the remote peer using the wire's `extended()` method:
+
+```javascript
+// Send JSON message
+const message = JSON.stringify({ type: 'ping', time: Date.now() })
+this._wire.extended(this.name, Buffer.from(message))
+
+// Send binary message
+const buf = Buffer.from([0x01, 0x02, 0x03])
+this._wire.extended(this.name, buf)
+
+// Send bencoded message
+import bencode from 'bencode'
+const message = bencode.encode({ type: 'data', value: 123 })
+this._wire.extended(this.name, message)
+```
+
+## Advanced Patterns
+
+### Request-Response Pattern
+
+```javascript
+class RequestResponseExtension {
+  constructor (wire) {
+    this._wire = wire
+    this._pending = new Map()
+    this._requestId = 0
+  }
+
+  onMessage (buf) {
+    const msg = JSON.parse(buf.toString())
+    
+    if (msg.type === 'request') {
+      // Handle request and send response
+      const response = this._handleRequest(msg.data)
+      this._sendResponse(msg.id, response)
+    } else if (msg.type === 'response') {
+      // Resolve pending request
+      const callback = this._pending.get(msg.id)
+      if (callback) {
+        callback(msg.data)
+        this._pending.delete(msg.id)
+      }
+    }
+  }
+
+  request (data) {
+    return new Promise((resolve) => {
+      const id = this._requestId++
+      this._pending.set(id, resolve)
+      
+      const msg = JSON.stringify({
+        type: 'request',
+        id: id,
+        data: data
+      })
+      
+      this._wire.extended(this.name, Buffer.from(msg))
+    })
+  }
+
+  _sendResponse (id, data) {
+    const msg = JSON.stringify({
+      type: 'response',
+      id: id,
+      data: data
+    })
+    this._wire.extended(this.name, Buffer.from(msg))
+  }
+
+  _handleRequest (data) {
+    // Process request and return response
+    return { result: 'success' }
+  }
+}
+
+RequestResponseExtension.prototype.name = 'reqres'
+```
+
+### State Synchronization
+
+```javascript
+class StateSyncExtension {
+  constructor (wire) {
+    this._wire = wire
+    this._state = {}
+    this._synced = false
+    
+    wire.extendedHandshake.statesync = {
+      version: 1
+    }
+  }
+
+  onExtendedHandshake (handshake) {
+    if (handshake.statesync) {
+      // Send our current state
+      this.sendState()
+    }
+  }
+
+  onMessage (buf) {
+    const msg = JSON.parse(buf.toString())
+    
+    if (msg.type === 'state') {
+      this._state = msg.state
+      this._synced = true
+    } else if (msg.type === 'update') {
+      // Merge updates
+      Object.assign(this._state, msg.changes)
+    }
+  }
+
+  sendState () {
+    const msg = JSON.stringify({
+      type: 'state',
+      state: this._state
+    })
+    this._wire.extended(this.name, Buffer.from(msg))
+  }
+
+  updateState (changes) {
+    Object.assign(this._state, changes)
+    
+    const msg = JSON.stringify({
+      type: 'update',
+      changes: changes
+    })
+    this._wire.extended(this.name, Buffer.from(msg))
+  }
+}
+
+StateSyncExtension.prototype.name = 'statesync'
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Name Your Extension" icon="tag">
+    Use unique, descriptive names for extensions to avoid conflicts.
+    
+    ```javascript
+    MyExtension.prototype.name = 'com.example.myapp'
+    ```
+  </Card>
+
+  <Card title="Handle Errors Gracefully" icon="shield-check">
+    Always validate messages and handle parsing errors.
+    
+    ```javascript
+    onMessage (buf) {
+      try {
+        const msg = JSON.parse(buf.toString())
+        // Process message
+      } catch (err) {
+        // Ignore invalid messages
+        return
+      }
+    }
+    ```
+  </Card>
+
+  <Card title="Check Extension Support" icon="circle-check">
+    Verify the peer supports your extension before sending messages.
+    
+    ```javascript
+    if (!extendedHandshake.myext) {
+      return // Peer doesn't support this extension
+    }
+    ```
+  </Card>
+
+  <Card title="Use Efficient Encoding" icon="bolt">
+    Use bencode or binary formats for better performance.
+    
+    ```javascript
+    import bencode from 'bencode'
+    const msg = bencode.encode({ type: 'data' })
+    ```
+  </Card>
+</CardGroup>
+
+## Wire Events
+
+Extensions can listen to wire events to react to connection state changes:
+
+```javascript
+class MonitoringExtension {
+  constructor (wire) {
+    this._wire = wire
+    
+    wire.on('choke', () => {
+      console.log('Peer choked us')
+    })
+    
+    wire.on('unchoke', () => {
+      console.log('Peer unchoked us')
+    })
+    
+    wire.on('interested', () => {
+      console.log('Peer is interested')
+    })
+    
+    wire.on('uninterested', () => {
+      console.log('Peer is not interested')
+    })
+    
+    wire.on('have', (index) => {
+      console.log('Peer has piece:', index)
+    })
+    
+    wire.on('close', () => {
+      console.log('Connection closed')
+    })
+  }
+}
+
+MonitoringExtension.prototype.name = 'monitor'
+```
+
+## Testing Extensions
+
+<Accordion title="Extension Test Example">
+  ```javascript
+  import test from 'tape'
+  import WebTorrent from 'webtorrent'
+  import MyExtension from './my-extension.js'
+
+  test('extension communication', t => {
+    t.plan(2)
+
+    const client1 = new WebTorrent({ 
+      dht: false, 
+      tracker: false,
+      lsd: false 
+    })
+    const client2 = new WebTorrent({ 
+      dht: false, 
+      tracker: false,
+      lsd: false 
+    })
+
+    client1.seed(Buffer.from('test'), { name: 'test.txt' }, torrent1 => {
+      torrent1.on('wire', wire => {
+        wire.use(MyExtension)
+        
+        wire.myext.on('message', msg => {
+          t.equal(msg.text, 'Hello!')
+        })
+      })
+
+      const torrent2 = client2.add(torrent1.magnetURI)
+      torrent2.on('wire', wire => {
+        wire.use(MyExtension)
+        
+        wire.myext.on('ready', () => {
+          wire.myext.sendMessage({ text: 'Hello!' })
+          t.pass('Extension ready')
+        })
+      })
+
+      torrent2.on('metadata', () => {
+        torrent2.addPeer(`127.0.0.1:${client1.address().port}`)
+      })
+    })
+  })
+  ```
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="BEP Support" icon="book" href="/advanced/bep-support">
+    Learn about supported BitTorrent protocols
+  </Card>
+  <Card title="Performance" icon="gauge" href="/advanced/performance">
+    Optimize extension performance
+  </Card>
+</CardGroup>

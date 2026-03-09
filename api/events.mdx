@@ -1,0 +1,459 @@
+---
+title: Events Reference
+description: Complete guide to WebTorrent events
+---
+
+## Client Events
+
+### `client.on('ready', callback)`
+
+Emitted when the client is ready to accept torrents.
+
+```js
+client.on('ready', () => {
+  console.log('Client is ready')
+})
+```
+
+### `client.on('listening', callback)`
+
+Emitted when the client starts listening on a port.
+
+```js
+client.on('listening', () => {
+  const address = client.address()
+  console.log(`Listening on port ${address.port}`)
+})
+```
+
+### `client.on('add', callback)`
+
+Emitted when a torrent is added to `client.torrents`. This fires before the torrent has metadata.
+
+<ParamField path="torrent" type="Torrent">
+  The torrent that was added
+</ParamField>
+
+```js
+client.on('add', torrent => {
+  console.log('Torrent added:', torrent.infoHash)
+})
+```
+
+### `client.on('torrent', callback)`
+
+Emitted when a torrent is ready to be used (metadata is available and store is ready).
+
+<ParamField path="torrent" type="Torrent">
+  The torrent that is ready
+</ParamField>
+
+```js
+client.on('torrent', torrent => {
+  console.log('Torrent ready:', torrent.name)
+  console.log('Files:', torrent.files.length)
+})
+```
+
+### `client.on('remove', callback)`
+
+Emitted when a torrent is removed from `client.torrents`.
+
+<ParamField path="torrent" type="Torrent">
+  The torrent that was removed
+</ParamField>
+
+```js
+client.on('remove', torrent => {
+  console.log('Torrent removed:', torrent.infoHash)
+})
+```
+
+### `client.on('seed', callback)`
+
+Emitted when a seeded torrent is ready.
+
+<ParamField path="torrent" type="Torrent">
+  The torrent that is seeding
+</ParamField>
+
+```js
+client.on('seed', torrent => {
+  console.log('Now seeding:', torrent.magnetURI)
+})
+```
+
+### `client.on('error', callback)`
+
+Emitted when the client encounters a fatal error. The client is automatically destroyed when this occurs.
+
+<ParamField path="error" type="Error">
+  The error that occurred
+</ParamField>
+
+<Note>Always listen for the 'error' event to prevent uncaught exceptions.</Note>
+
+```js
+client.on('error', err => {
+  console.error('Client error:', err.message)
+})
+```
+
+### `client.on('download', callback)`
+
+Emitted whenever data is downloaded by any torrent.
+
+<ParamField path="bytes" type="number">
+  Number of bytes downloaded
+</ParamField>
+
+```js
+client.on('download', bytes => {
+  console.log(`Downloaded ${bytes} bytes`)
+  console.log(`Total speed: ${client.downloadSpeed} bytes/sec`)
+})
+```
+
+### `client.on('upload', callback)`
+
+Emitted whenever data is uploaded by any torrent.
+
+<ParamField path="bytes" type="number">
+  Number of bytes uploaded
+</ParamField>
+
+```js
+client.on('upload', bytes => {
+  console.log(`Uploaded ${bytes} bytes`)
+  console.log(`Total speed: ${client.uploadSpeed} bytes/sec`)
+})
+```
+
+## Torrent Events
+
+### `torrent.on('infoHash', callback)`
+
+Emitted when the info hash of the torrent has been determined.
+
+```js
+torrent.on('infoHash', () => {
+  console.log('Info hash:', torrent.infoHash)
+})
+```
+
+### `torrent.on('metadata', callback)`
+
+Emitted when the metadata of the torrent has been determined. This includes the full contents of the .torrent file.
+
+```js
+torrent.on('metadata', () => {
+  console.log('Metadata received')
+  console.log('Name:', torrent.name)
+  console.log('Files:', torrent.files.length)
+  console.log('Length:', torrent.length)
+})
+```
+
+### `torrent.on('ready', callback)`
+
+Emitted when the torrent is ready to be used (metadata is available and store is ready).
+
+```js
+torrent.on('ready', () => {
+  console.log('Torrent ready!')
+  torrent.files.forEach(file => {
+    console.log('File:', file.name, file.length)
+  })
+})
+```
+
+### `torrent.on('done', callback)`
+
+Emitted when all torrent files have been downloaded.
+
+```js
+torrent.on('done', () => {
+  console.log('Torrent download complete!')
+  console.log(`Downloaded: ${torrent.downloaded} bytes`)
+  console.log(`Uploaded: ${torrent.uploaded} bytes`)
+  console.log(`Ratio: ${torrent.ratio}`)
+})
+```
+
+### `torrent.on('download', callback)`
+
+Emitted whenever data is downloaded.
+
+<ParamField path="bytes" type="number">
+  Number of bytes downloaded
+</ParamField>
+
+```js
+torrent.on('download', bytes => {
+  console.log(`Downloaded: ${bytes} bytes`)
+  console.log(`Total: ${torrent.downloaded} bytes`)
+  console.log(`Speed: ${torrent.downloadSpeed} bytes/sec`)
+  console.log(`Progress: ${(torrent.progress * 100).toFixed(1)}%`)
+})
+```
+
+### `torrent.on('upload', callback)`
+
+Emitted whenever data is uploaded.
+
+<ParamField path="bytes" type="number">
+  Number of bytes uploaded
+</ParamField>
+
+```js
+torrent.on('upload', bytes => {
+  console.log(`Uploaded: ${bytes} bytes`)
+  console.log(`Total: ${torrent.uploaded} bytes`)
+  console.log(`Speed: ${torrent.uploadSpeed} bytes/sec`)
+})
+```
+
+### `torrent.on('wire', callback)`
+
+Emitted whenever a new peer is connected.
+
+<ParamField path="wire" type="Wire">
+  The wire (peer connection) instance
+</ParamField>
+
+<ParamField path="addr" type="string">
+  The peer's address (optional)
+</ParamField>
+
+```js
+torrent.on('wire', (wire, addr) => {
+  console.log('Connected to peer:', addr)
+  console.log('Peer type:', wire.type)
+})
+```
+
+This event is useful for implementing custom BitTorrent protocol extensions:
+
+```js
+import MyExtension from './my-extension.js'
+
+torrent.on('wire', (wire, addr) => {
+  console.log('Connected to peer:', addr)
+  wire.use(MyExtension)
+})
+```
+
+### `torrent.on('noPeers', callback)`
+
+Emitted when no peers have been found. Emitted separately for each announce type.
+
+<ParamField path="announceType" type="string">
+  One of: `'tracker'`, `'dht'`, `'lsd'`, or `'ut_pex'`
+</ParamField>
+
+```js
+torrent.on('noPeers', announceType => {
+  console.log(`No peers found via ${announceType}`)
+})
+```
+
+### `torrent.on('peer', callback)`
+
+Emitted when a peer is added to the torrent swarm.
+
+<ParamField path="peer" type="string">
+  Peer address or identifier
+</ParamField>
+
+```js
+torrent.on('peer', peer => {
+  console.log('Peer added:', peer)
+})
+```
+
+### `torrent.on('verified', callback)`
+
+Emitted every time a piece is verified.
+
+<ParamField path="index" type="number">
+  Index of the verified piece
+</ParamField>
+
+```js
+let verifiedPieces = 0
+torrent.on('verified', index => {
+  verifiedPieces++
+  console.log(`Piece ${index} verified (${verifiedPieces}/${torrent.pieces.length})`)
+})
+```
+
+### `torrent.on('idle', callback)`
+
+Emitted when the torrent has no more active selections and starts idling or seeding.
+
+```js
+torrent.on('idle', () => {
+  console.log('Torrent is now idle')
+})
+```
+
+### `torrent.on('interested', callback)`
+
+Emitted when the client becomes interested in downloading from peers.
+
+```js
+torrent.on('interested', () => {
+  console.log('Now interested in downloading')
+})
+```
+
+### `torrent.on('uninterested', callback)`
+
+Emitted when the client is no longer interested in downloading from peers.
+
+```js
+torrent.on('uninterested', () => {
+  console.log('No longer interested in downloading')
+})
+```
+
+### `torrent.on('trackerAnnounce', callback)`
+
+Emitted when the torrent announces to a tracker.
+
+```js
+torrent.on('trackerAnnounce', () => {
+  console.log('Announced to tracker')
+})
+```
+
+### `torrent.on('dhtAnnounce', callback)`
+
+Emitted when the torrent announces to the DHT.
+
+```js
+torrent.on('dhtAnnounce', () => {
+  console.log('Announced to DHT')
+})
+```
+
+### `torrent.on('warning', callback)`
+
+Emitted when there is a warning (non-fatal error).
+
+<ParamField path="error" type="Error">
+  The warning error
+</ParamField>
+
+```js
+torrent.on('warning', err => {
+  console.warn('Torrent warning:', err.message)
+})
+```
+
+### `torrent.on('error', callback)`
+
+Emitted when the torrent encounters a fatal error. The torrent is automatically destroyed when this occurs.
+
+<ParamField path="error" type="Error">
+  The error that occurred
+</ParamField>
+
+<Note>
+If there are no 'error' handlers on the torrent, the error will be emitted at `client.on('error')`. Always listen for errors in both places.
+</Note>
+
+```js
+torrent.on('error', err => {
+  console.error('Torrent error:', err.message)
+})
+```
+
+### `torrent.on('close', callback)`
+
+Emitted when the torrent has been destroyed.
+
+```js
+torrent.on('close', () => {
+  console.log('Torrent closed')
+})
+```
+
+## File Events
+
+### `file.on('done', callback)`
+
+Emitted when the file has been downloaded.
+
+```js
+file.on('done', () => {
+  console.log(`File complete: ${file.name}`)
+})
+```
+
+### `file.on('stream', callback)`
+
+Emitted when the HTTP server creates a new read stream for this file.
+
+<Note>This is advanced functionality for manipulating streaming data.</Note>
+
+```js
+file.on('stream', ({ stream, file, req }, pipeCallback) => {
+  console.log('Stream created for:', file.name)
+  console.log('Request headers:', req.headers)
+})
+```
+
+### `file.on('iterator', callback)`
+
+Emitted when the HTTP server creates an async iterator for this file.
+
+<Note>This is advanced functionality for low-level data manipulation.</Note>
+
+```js
+file.on('iterator', ({ iterator, file, req }, transformCallback) => {
+  console.log('Iterator created for:', file.name)
+})
+```
+
+## Complete Example
+
+```js
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+client.on('error', err => {
+  console.error('Client error:', err)
+})
+
+client.on('ready', () => {
+  console.log('Client ready')
+  
+  const torrent = client.add(magnetURI)
+  
+  torrent.on('infoHash', () => {
+    console.log('Got info hash:', torrent.infoHash)
+  })
+  
+  torrent.on('metadata', () => {
+    console.log('Got metadata:', torrent.name)
+  })
+  
+  torrent.on('ready', () => {
+    console.log('Torrent ready with', torrent.files.length, 'files')
+  })
+  
+  torrent.on('download', bytes => {
+    console.log(`Progress: ${(torrent.progress * 100).toFixed(1)}%`)
+  })
+  
+  torrent.on('done', () => {
+    console.log('Download complete!')
+  })
+  
+  torrent.on('error', err => {
+    console.error('Torrent error:', err)
+  })
+})
+```

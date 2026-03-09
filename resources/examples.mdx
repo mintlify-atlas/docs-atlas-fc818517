@@ -1,0 +1,405 @@
+---
+title: 'Examples'
+description: 'Real-world examples and use cases for WebTorrent'
+icon: 'code'
+---
+
+## Basic Usage Examples
+
+### Downloading a Torrent
+
+The simplest way to download a torrent in the browser:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+const magnetURI = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10...'
+
+client.add(magnetURI, torrent => {
+  // Got torrent metadata!
+  console.log('Client is downloading:', torrent.infoHash)
+
+  for (const file of torrent.files) {
+    document.body.append(file.name)
+  }
+})
+```
+
+### Seeding Files
+
+Create a new torrent and start seeding it:
+
+```javascript
+import dragDrop from 'drag-drop'
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+// When user drops files on the browser, create a new torrent and start seeding it!
+dragDrop('body', files => {
+  client.seed(files, torrent => {
+    console.log('Client is seeding:', torrent.infoHash)
+  })
+})
+```
+
+## Video Player Integration
+
+WebTorrent can stream video directly to HTML5 video elements.
+
+### Service Worker Renderer
+
+The modern approach using Service Workers for optimal performance:
+
+```javascript
+import WebTorrent from 'https://esm.sh/webtorrent/dist/webtorrent.min.js'
+
+const client = new WebTorrent()
+const torrentId = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10...'
+const player = document.querySelector('video')
+
+// Register service worker
+const controller = await navigator.serviceWorker.register('./sw.min.js', { scope: './' })
+await navigator.serviceWorker.ready
+client.createServer({ controller })
+
+client.add(torrentId, torrent => {
+  // Find the video file
+  const file = torrent.files.find(file => file.name.endsWith('.mp4'))
+  
+  // Log streams emitted by the video player
+  file.on('stream', ({ stream, file, req }) => {
+    if (req.destination === 'video') {
+      console.log(`Video player requested data from ${file.name}!`)
+    }
+  })
+  
+  // Stream to video element
+  file.streamTo(player)
+  console.log('Ready to play!')
+})
+```
+
+### Video.js Integration
+
+Integrate with the popular Video.js player:
+
+```html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>WebTorrent + Video.js</title>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/video.js/7.8.1/video-js.min.css" />
+    <script src="//cdnjs.cloudflare.com/ajax/libs/video.js/7.8.1/video.min.js"></script>
+  </head>
+  <body>
+    <video id="video-container" class="video-js" data-setup="{}" controls="true"></video>
+    
+    <script type='module'>   
+      import WebTorrent from 'https://esm.sh/webtorrent/dist/webtorrent.min.js'
+      
+      const client = new WebTorrent()
+      const torrentId = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10...'
+      const player = document.querySelector('video')
+
+      const controller = await navigator.serviceWorker.register('./sw.min.js', { scope: './' })
+      await navigator.serviceWorker.ready
+      client.createServer({ controller })
+
+      client.add(torrentId, torrent => {
+        const file = torrent.files.find(file => file.name.endsWith('.mp4'))
+        file.streamTo(player)
+        console.log('Ready to play!')
+      })
+    </script>
+  </body>
+</html>
+```
+
+<Note>
+Video.js wraps the `<video>` element in a `<div>`, so the actual video element ID becomes `video-container_html5_api`.
+</Note>
+
+## Real-World Applications
+
+### File Sharing Application
+
+Simple peer-to-peer file sharing:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+// Upload handler
+function handleFileUpload(files) {
+  client.seed(files, torrent => {
+    const magnetURI = torrent.magnetURI
+    console.log('Share this magnet link:', magnetURI)
+    
+    // Display download progress
+    torrent.on('upload', () => {
+      console.log('Upload speed:', torrent.uploadSpeed)
+      console.log('Uploaded:', torrent.uploaded)
+    })
+  })
+}
+
+// Download handler
+function handleDownload(magnetURI) {
+  client.add(magnetURI, torrent => {
+    console.log('Downloading:', torrent.name)
+    
+    torrent.on('download', () => {
+      console.log('Progress:', (torrent.progress * 100).toFixed(1) + '%')
+      console.log('Download speed:', torrent.downloadSpeed)
+    })
+    
+    torrent.on('done', () => {
+      console.log('Download finished!')
+      torrent.files.forEach(file => {
+        file.getBlobURL((err, url) => {
+          if (err) throw err
+          // Create download link
+          const a = document.createElement('a')
+          a.href = url
+          a.download = file.name
+          a.click()
+        })
+      })
+    })
+  })
+}
+```
+
+### Streaming Media Player
+
+A complete streaming media player with controls:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+class TorrentPlayer {
+  constructor(videoElement) {
+    this.client = new WebTorrent()
+    this.video = videoElement
+    this.currentTorrent = null
+  }
+  
+  async play(magnetURI) {
+    // Stop current torrent if playing
+    if (this.currentTorrent) {
+      this.currentTorrent.destroy()
+    }
+    
+    // Setup service worker
+    const controller = await navigator.serviceWorker.register('./sw.min.js', { scope: './' })
+    await navigator.serviceWorker.ready
+    this.client.createServer({ controller })
+    
+    this.currentTorrent = this.client.add(magnetURI, torrent => {
+      // Find media file
+      const file = torrent.files.find(f => {
+        return f.name.endsWith('.mp4') || 
+               f.name.endsWith('.webm') || 
+               f.name.endsWith('.mkv')
+      })
+      
+      if (!file) {
+        throw new Error('No supported video file found')
+      }
+      
+      // Stream to video element
+      file.streamTo(this.video)
+      
+      // Setup event listeners
+      torrent.on('download', () => {
+        this.updateStats(torrent)
+      })
+      
+      torrent.on('wire', (wire) => {
+        console.log('Connected to peer:', wire.remoteAddress)
+      })
+    })
+  }
+  
+  updateStats(torrent) {
+    const stats = {
+      progress: (torrent.progress * 100).toFixed(1) + '%',
+      downloadSpeed: this.formatBytes(torrent.downloadSpeed) + '/s',
+      uploadSpeed: this.formatBytes(torrent.uploadSpeed) + '/s',
+      peers: torrent.numPeers,
+      downloaded: this.formatBytes(torrent.downloaded),
+      uploaded: this.formatBytes(torrent.uploaded)
+    }
+    
+    console.log('Stats:', stats)
+    return stats
+  }
+  
+  formatBytes(bytes) {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+  
+  stop() {
+    if (this.currentTorrent) {
+      this.currentTorrent.destroy()
+      this.currentTorrent = null
+    }
+  }
+  
+  destroy() {
+    this.client.destroy()
+  }
+}
+
+// Usage
+const player = new TorrentPlayer(document.querySelector('video'))
+player.play('magnet:?xt=urn:btih:...')
+```
+
+## Node.js Examples
+
+### Command Line Downloader
+
+```javascript
+import WebTorrent from 'webtorrent'
+import fs from 'fs'
+import path from 'path'
+
+const client = new WebTorrent()
+const magnetURI = process.argv[2]
+
+if (!magnetURI) {
+  console.error('Usage: node download.js <magnet-uri>')
+  process.exit(1)
+}
+
+client.add(magnetURI, { path: './downloads' }, torrent => {
+  console.log('Downloading:', torrent.name)
+  
+  torrent.on('download', () => {
+    const progress = (torrent.progress * 100).toFixed(1)
+    const speed = (torrent.downloadSpeed / 1024 / 1024).toFixed(2)
+    process.stdout.write(`\rProgress: ${progress}% | Speed: ${speed} MB/s`)
+  })
+  
+  torrent.on('done', () => {
+    console.log('\n\nDownload complete!')
+    console.log('Files saved to:', torrent.path)
+    process.exit(0)
+  })
+  
+  torrent.on('error', err => {
+    console.error('\nError:', err.message)
+    process.exit(1)
+  })
+})
+
+client.on('error', err => {
+  console.error('Client error:', err.message)
+  process.exit(1)
+})
+```
+
+### HTTP Server for Streaming
+
+```javascript
+import WebTorrent from 'webtorrent'
+import http from 'http'
+
+const client = new WebTorrent()
+const port = 3000
+
+// Create HTTP server
+const server = http.createServer((req, res) => {
+  if (req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/html' })
+    res.end(`
+      <h1>WebTorrent HTTP Server</h1>
+      <video controls width="720" src="/stream"></video>
+    `)
+    return
+  }
+  
+  if (req.url === '/stream' && client.torrents[0]) {
+    const torrent = client.torrents[0]
+    const file = torrent.files[0]
+    file.createReadStream().pipe(res)
+  } else {
+    res.writeHead(404)
+    res.end('Not found')
+  }
+})
+
+server.listen(port, () => {
+  console.log(`Server listening on http://localhost:${port}`)
+  
+  // Add a torrent
+  const magnetURI = 'magnet:?xt=urn:btih:...'
+  client.add(magnetURI, torrent => {
+    console.log('Torrent ready:', torrent.name)
+  })
+})
+```
+
+## Production Applications Using WebTorrent
+
+<CardGroup cols={2}>
+  <Card title="WebTorrent Desktop" icon="desktop" href="https://webtorrent.io/desktop">
+    Streaming torrent app for Mac, Windows, and Linux
+  </Card>
+  
+  <Card title="Instant.io" icon="bolt" href="https://instant.io">
+    Streaming file transfer over WebTorrent
+  </Card>
+  
+  <Card title="File.pizza" icon="pizza-slice" href="https://file.pizza">
+    Free peer-to-peer file transfers in your browser
+  </Card>
+  
+  <Card title="BitChute" icon="video" href="https://bitchute.com">
+    A decentralized video streaming social network
+  </Card>
+</CardGroup>
+
+## Performance Tips
+
+<AccordionGroup>
+  <Accordion title="Optimize Piece Selection">
+    WebTorrent automatically switches between sequential and rarest-first piece selection. For streaming, it prioritizes pieces needed for playback.
+    
+    ```javascript
+    client.add(magnetURI, {
+      strategy: 'sequential' // Force sequential for streaming
+    })
+    ```
+  </Accordion>
+  
+  <Accordion title="Limit Connections">
+    Control the maximum number of peer connections:
+    
+    ```javascript
+    const client = new WebTorrent({
+      maxConns: 100 // Default is 55
+    })
+    ```
+  </Accordion>
+  
+  <Accordion title="Bandwidth Throttling">
+    Limit upload and download speeds:
+    
+    ```javascript
+    const client = new WebTorrent({
+      downloadLimit: 1024 * 1024, // 1 MB/s
+      uploadLimit: 512 * 1024     // 512 KB/s
+    })
+    ```
+  </Accordion>
+</AccordionGroup>

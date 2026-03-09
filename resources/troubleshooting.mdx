@@ -1,0 +1,494 @@
+---
+title: 'Troubleshooting'
+description: 'Common issues and solutions when working with WebTorrent'
+icon: 'wrench'
+---
+
+## Browser Issues
+
+### No Peers Found
+
+<AccordionGroup>
+  <Accordion title="Problem: Browser downloading shows no peers">
+    **Symptom:** You add a magnet URI or torrent file, but no peers are discovered and downloading doesn't start.
+    
+    **Solution:** The torrent must be seeded by a WebRTC-capable client. WebTorrent in the browser can only connect to other WebRTC peers.
+    
+    Make sure the torrent is being seeded by:
+    - [WebTorrent Desktop](https://webtorrent.io/desktop)
+    - [Vuze](https://wiki.vuze.com/w/WebTorrent) with WebTorrent plugin
+    - [webtorrent-hybrid](https://npmjs.com/package/webtorrent-hybrid)
+    - [Instant.io](https://instant.io)
+    - Another WebTorrent browser instance
+    
+    <Note>
+    Desktop torrent clients like uTorrent, BitTorrent, and Transmission **cannot** connect to WebTorrent browser clients unless they support WebRTC.
+    </Note>
+  </Accordion>
+  
+  <Accordion title="Problem: Peers connect then disconnect immediately">
+    **Symptom:** Peers are discovered but disconnect after a few seconds.
+    
+    **Common causes:**
+    - **CORS issues:** Make sure trackers support CORS if you're using custom trackers
+    - **Network restrictions:** Some networks block WebRTC traffic
+    - **Firewall/NAT:** The peer may be behind a restrictive firewall
+    
+    **Solutions:**
+    ```javascript
+    // Add more reliable trackers
+    client.add(magnetURI, {
+      announce: [
+        'wss://tracker.openwebtorrent.com',
+        'wss://tracker.btorrent.xyz',
+        'wss://tracker.fastcast.nz'
+      ]
+    })
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Video Streaming Issues
+
+<AccordionGroup>
+  <Accordion title="Problem: Video won't play or stream">
+    **Symptom:** Video element shows black screen or loading spinner indefinitely.
+    
+    **Check browser support:**
+    - Ensure `MediaSource` API is supported (Firefox 42+, Chrome, Safari, Edge)
+    - Check if the video codec is supported by your browser
+    
+    **Supported formats:**
+    - ✅ MP4 (H.264/H.265, AAC) - **Best support, seeking works**
+    - ✅ WebM (VP8/VP9, Vorbis/Opus)
+    - ✅ MKV (various codecs)
+    - ⚠️ Other formats have limited support
+    
+    **Solution:**
+    ```javascript
+    // Make sure you've registered the service worker first
+    const controller = await navigator.serviceWorker.register('./sw.min.js', {
+      scope: './'
+    })
+    await navigator.serviceWorker.ready
+    client.createServer({ controller })
+    
+    client.add(magnetURI, torrent => {
+      const file = torrent.files.find(f => f.name.endsWith('.mp4'))
+      
+      if (!file) {
+        console.error('No MP4 file found')
+        return
+      }
+      
+      const video = document.querySelector('video')
+      file.streamTo(video)
+      
+      video.addEventListener('error', (e) => {
+        console.error('Video error:', video.error)
+      })
+    })
+    ```
+  </Accordion>
+  
+  <Accordion title="Problem: Video stutters or buffers constantly">
+    **Symptom:** Playback keeps pausing to buffer.
+    
+    **Solutions:**
+    
+    1. **Check download speed:**
+    ```javascript
+    torrent.on('download', () => {
+      console.log('Speed:', torrent.downloadSpeed, 'bytes/sec')
+      console.log('Progress:', (torrent.progress * 100).toFixed(1) + '%')
+    })
+    ```
+    
+    2. **Wait for more pieces before playing:**
+    ```javascript
+    torrent.on('ready', () => {
+      // Wait until 5% is downloaded
+      const interval = setInterval(() => {
+        if (torrent.progress > 0.05) {
+          clearInterval(interval)
+          file.streamTo(video)
+          video.play()
+        }
+      }, 1000)
+    })
+    ```
+    
+    3. **Increase max connections:**
+    ```javascript
+    const client = new WebTorrent({
+      maxConns: 100 // Default is 55
+    })
+    ```
+  </Accordion>
+  
+  <Accordion title="Problem: Video seeking doesn't work">
+    **Symptom:** Clicking on the progress bar doesn't jump to that position.
+    
+    **Solution:** Only MP4 files have full seeking support. For other formats, seeking may be limited.
+    
+    If using MP4 and seeking still doesn't work:
+    ```javascript
+    // Ensure service worker is properly set up
+    const controller = await navigator.serviceWorker.register('./sw.min.js', {
+      scope: './' // Must match the scope where your page is served
+    })
+    await navigator.serviceWorker.ready
+    
+    // Verify the server is created
+    const server = client.createServer({ controller })
+    console.log('Server created:', server)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Service Worker Issues
+
+<AccordionGroup>
+  <Accordion title="Problem: Service Worker registration fails">
+    **Symptom:** `navigator.serviceWorker.register()` throws an error.
+    
+    **Common causes:**
+    - **HTTPS required:** Service Workers only work on HTTPS (or localhost)
+    - **Scope mismatch:** Service Worker file must be at or above the scope path
+    - **File not found:** `sw.min.js` is not being served correctly
+    
+    **Solutions:**
+    
+    1. **Use HTTPS or localhost:**
+    ```bash
+    # For development, use localhost
+    npx serve -l 3000
+    # Access via http://localhost:3000
+    ```
+    
+    2. **Check file path:**
+    ```javascript
+    // sw.min.js must be in the root directory or above your HTML file
+    const controller = await navigator.serviceWorker.register('./sw.min.js', {
+      scope: './' // Scope must be at or below sw.min.js location
+    })
+    ```
+    
+    3. **Copy service worker file:**
+    ```bash
+    # Copy from node_modules
+    cp node_modules/webtorrent/sw.min.js public/sw.min.js
+    ```
+  </Accordion>
+  
+  <Accordion title="Problem: Service Worker installed but streaming doesn't work">
+    **Check service worker is active:**
+    
+    ```javascript
+    const registration = await navigator.serviceWorker.register('./sw.min.js')
+    console.log('Registration:', registration)
+    
+    await navigator.serviceWorker.ready
+    console.log('Service Worker is ready')
+    
+    const server = client.createServer({ controller: registration })
+    console.log('Server created:', server)
+    ```
+    
+    **Debug in DevTools:**
+    - Open Chrome DevTools → Application → Service Workers
+    - Check if the service worker is activated
+    - Look for errors in the service worker console
+  </Accordion>
+</AccordionGroup>
+
+## Node.js Issues
+
+<AccordionGroup>
+  <Accordion title="Problem: Cannot find module 'webtorrent'">
+    **Symptom:** `Error: Cannot find module 'webtorrent'`
+    
+    **Solution:**
+    ```bash
+    # Install WebTorrent
+    npm install webtorrent
+    
+    # For Node.js to connect to WebRTC peers, use hybrid version
+    npm install webtorrent-hybrid
+    ```
+    
+    For ESM projects, ensure `package.json` has:
+    ```json
+    {
+      "type": "module"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Problem: No peers in Node.js">
+    **Check DHT and trackers are enabled:**
+    
+    ```javascript
+    const client = new WebTorrent({
+      dht: true,     // Enable DHT
+      tracker: true, // Enable trackers
+      lsd: true      // Enable local peer discovery
+    })
+    
+    client.add(magnetURI, torrent => {
+      console.log('Trackers:', torrent.announce)
+      
+      torrent.on('peer', peer => {
+        console.log('Connected to peer:', peer.id)
+      })
+      
+      torrent.on('wire', wire => {
+        console.log('Wire protocol established:', wire.remoteAddress)
+      })
+    })
+    ```
+    
+    **Use webtorrent-hybrid for WebRTC support:**
+    ```bash
+    npm install webtorrent-hybrid
+    ```
+    
+    ```javascript
+    import WebTorrent from 'webtorrent-hybrid'
+    // Now can connect to both TCP/UDP and WebRTC peers
+    ```
+  </Accordion>
+  
+  <Accordion title="Problem: Port already in use">
+    **Symptom:** `Error: listen EADDRINUSE: address already in use`
+    
+    **Solution:** Specify different ports:
+    
+    ```javascript
+    const client = new WebTorrent({
+      dht: {
+        port: 6881 // Change DHT port
+      },
+      tracker: {
+        port: 8000 // Change tracker port
+      }
+    })
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Memory and Performance Issues
+
+<AccordionGroup>
+  <Accordion title="Problem: High memory usage">
+    **Solutions:**
+    
+    1. **Destroy torrents when done:**
+    ```javascript
+    torrent.on('done', () => {
+      // Wait a bit for final seeding, then destroy
+      setTimeout(() => {
+        torrent.destroy()
+      }, 60000) // Seed for 1 minute
+    })
+    ```
+    
+    2. **Limit concurrent torrents:**
+    ```javascript
+    // Only keep 3 torrents active
+    if (client.torrents.length > 3) {
+      client.torrents[0].destroy()
+    }
+    ```
+    
+    3. **Reduce buffer size (Node.js):**
+    ```javascript
+    const client = new WebTorrent({
+      maxConns: 30 // Reduce connections
+    })
+    ```
+  </Accordion>
+  
+  <Accordion title="Problem: Slow download speeds">
+    **Diagnose the issue:**
+    
+    ```javascript
+    torrent.on('download', () => {
+      console.log('Download speed:', (torrent.downloadSpeed / 1024 / 1024).toFixed(2), 'MB/s')
+      console.log('Peers:', torrent.numPeers)
+      console.log('Progress:', (torrent.progress * 100).toFixed(1) + '%')
+    })
+    ```
+    
+    **Solutions:**
+    
+    1. **Increase max connections:**
+    ```javascript
+    const client = new WebTorrent({
+      maxConns: 100
+    })
+    ```
+    
+    2. **Add more trackers:**
+    ```javascript
+    client.add(magnetURI, {
+      announce: [
+        'wss://tracker.openwebtorrent.com',
+        'wss://tracker.btorrent.xyz',
+        'udp://tracker.opentrackr.org:1337',
+        'udp://tracker.openbittorrent.com:6969'
+      ]
+    })
+    ```
+    
+    3. **Check for bandwidth throttling:**
+    ```javascript
+    const client = new WebTorrent({
+      downloadLimit: -1, // Unlimited
+      uploadLimit: -1    // Unlimited
+    })
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Tips
+
+### Enable Debug Logs
+
+<Tabs>
+  <Tab title="Browser">
+    Open the browser console and run:
+    
+    ```javascript
+    localStorage.setItem('debug', '*')
+    // Then refresh the page
+    ```
+    
+    To disable:
+    ```javascript
+    localStorage.removeItem('debug')
+    ```
+    
+    For specific modules only:
+    ```javascript
+    localStorage.setItem('debug', 'webtorrent,bittorrent-dht')
+    ```
+  </Tab>
+  
+  <Tab title="Node.js">
+    Set the DEBUG environment variable:
+    
+    ```bash
+    # All debug logs
+    DEBUG=* node app.js
+    
+    # Only WebTorrent logs
+    DEBUG=webtorrent node app.js
+    
+    # Multiple modules
+    DEBUG=webtorrent,bittorrent-dht node app.js
+    ```
+  </Tab>
+</Tabs>
+
+### Check WebTorrent Version
+
+```javascript
+import WebTorrent from 'webtorrent'
+console.log('WebTorrent version:', WebTorrent.VERSION)
+```
+
+### Verify Browser Support
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+if (!WebTorrent.WEBRTC_SUPPORT) {
+  console.error('WebRTC is not supported in this browser')
+} else {
+  console.log('WebRTC is supported!')
+}
+
+// Check MediaSource support
+if ('MediaSource' in window) {
+  console.log('MediaSource API is supported')
+} else {
+  console.warn('MediaSource API is not supported - streaming may not work')
+}
+
+// Check Service Worker support
+if ('serviceWorker' in navigator) {
+  console.log('Service Worker is supported')
+} else {
+  console.warn('Service Worker is not supported')
+}
+```
+
+## Common Error Messages
+
+<AccordionGroup>
+  <Accordion title="Error: Torrent is not done">
+    You're trying to access file data before the torrent is ready.
+    
+    **Solution:**
+    ```javascript
+    torrent.on('ready', () => {
+      // Now you can access files
+      torrent.files.forEach(file => {
+        console.log(file.name)
+      })
+    })
+    ```
+  </Accordion>
+  
+  <Accordion title="Error: Unsupported torrent identifier">
+    The torrent ID format is invalid.
+    
+    **Supported formats:**
+    - Magnet URI: `magnet:?xt=urn:btih:...`
+    - Info hash: `08ada5a7a6183aae1e09d831df6748d566095a10`
+    - HTTP URL to .torrent file: `https://example.com/file.torrent`
+    - File path (Node.js only): `/path/to/file.torrent`
+    - Buffer (Node.js only): `Buffer` containing .torrent file
+  </Accordion>
+  
+  <Accordion title="Error: Cannot read property 'files' of undefined">
+    The torrent hasn't been added successfully or hasn't loaded yet.
+    
+    **Solution:**
+    ```javascript
+    client.add(magnetURI, (torrent) => {
+      if (!torrent) {
+        console.error('Failed to add torrent')
+        return
+      }
+      
+      // Use torrent here
+      console.log('Files:', torrent.files)
+    })
+    
+    // Or handle errors
+    client.on('error', (err) => {
+      console.error('Client error:', err)
+    })
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Getting Help
+
+If you're still having issues:
+
+1. **Search existing issues:** [GitHub Issues](https://github.com/webtorrent/webtorrent/issues)
+2. **Join the community:**
+   - [Gitter chat](https://gitter.im/webtorrent/webtorrent)
+   - IRC: `#webtorrent` on freenode
+3. **Create a new issue:** Include:
+   - WebTorrent version
+   - Browser/Node.js version
+   - Full error message
+   - Minimal reproduction code
+
+<Note>
+When reporting issues, always include debug logs by enabling `DEBUG=*` (Node.js) or `localStorage.setItem('debug', '*')` (browser).
+</Note>

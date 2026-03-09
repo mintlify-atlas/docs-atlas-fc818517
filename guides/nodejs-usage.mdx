@@ -1,0 +1,486 @@
+---
+title: Using WebTorrent in Node.js
+description: Learn how to use WebTorrent in Node.js for server-side torrent operations
+---
+
+WebTorrent works great in Node.js using TCP and UDP to communicate with other BitTorrent clients. The same npm package works in both Node.js and the browser.
+
+## Installation
+
+Install WebTorrent using npm:
+
+```bash
+npm install webtorrent
+```
+
+Then require it in your Node.js application:
+
+```javascript
+import WebTorrent from 'webtorrent'
+// or
+const WebTorrent = require('webtorrent')
+```
+
+## Connecting to Web Peers
+
+<Note>
+  The standard `webtorrent` package in Node.js cannot connect to browser peers (WebRTC). To connect to both traditional BitTorrent peers **and** browser peers, use [webtorrent-hybrid](https://github.com/webtorrent/webtorrent-hybrid).
+</Note>
+
+```bash
+npm install webtorrent-hybrid
+```
+
+```javascript
+import WebTorrent from 'webtorrent-hybrid'
+
+const client = new WebTorrent()
+// Now can connect to both TCP/UDP peers and WebRTC peers
+```
+
+## Basic Usage
+
+<Steps>
+  <Step title="Create a client">
+    ```javascript
+    import WebTorrent from 'webtorrent'
+    
+    const client = new WebTorrent()
+    
+    client.on('error', err => {
+      console.error('Client error:', err)
+    })
+    ```
+  </Step>
+
+  <Step title="Download a torrent">
+    ```javascript
+    const magnetURI = 'magnet:?xt=urn:btih:...'
+    
+    client.add(magnetURI, { path: '/path/to/downloads' }, torrent => {
+      console.log('Downloading:', torrent.name)
+      
+      torrent.on('done', () => {
+        console.log('Torrent download finished')
+      })
+    })
+    ```
+  </Step>
+
+  <Step title="Monitor progress">
+    ```javascript
+    client.add(magnetURI, torrent => {
+      const interval = setInterval(() => {
+        console.log('Progress:', (torrent.progress * 100).toFixed(1) + '%')
+        console.log('Download speed:', torrent.downloadSpeed, 'bytes/sec')
+        console.log('Upload speed:', torrent.uploadSpeed, 'bytes/sec')
+        console.log('Peers:', torrent.numPeers)
+      }, 1000)
+      
+      torrent.on('done', () => {
+        clearInterval(interval)
+        console.log('Download complete!')
+      })
+    })
+    ```
+  </Step>
+</Steps>
+
+## Downloading Torrents
+
+### From Magnet URI
+
+```javascript
+const magnetURI = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10'
+
+client.add(magnetURI, { path: './downloads' }, torrent => {
+  console.log('Downloading:', torrent.name)
+})
+```
+
+### From .torrent File
+
+```javascript
+import fs from 'fs'
+
+const torrentFile = fs.readFileSync('./my-torrent.torrent')
+
+client.add(torrentFile, { path: './downloads' }, torrent => {
+  console.log('Downloading:', torrent.name)
+})
+```
+
+### From URL
+
+```javascript
+const torrentUrl = 'https://webtorrent.io/torrents/sintel.torrent'
+
+client.add(torrentUrl, { path: './downloads' }, torrent => {
+  console.log('Downloading:', torrent.name)
+})
+```
+
+### From Info Hash
+
+```javascript
+const infoHash = '08ada5a7a6183aae1e09d831df6748d566095a10'
+
+client.add(infoHash, { path: './downloads' }, torrent => {
+  console.log('Downloading:', torrent.name)
+})
+```
+
+## Seeding Torrents
+
+### Seed a File
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+client.seed('/path/to/file.mp4', torrent => {
+  console.log('Client is seeding:', torrent.magnetURI)
+})
+```
+
+### Seed a Directory
+
+```javascript
+client.seed('/path/to/folder', torrent => {
+  console.log('Client is seeding:', torrent.infoHash)
+  console.log('Files:', torrent.files.length)
+})
+```
+
+### Seed with Options
+
+```javascript
+client.seed('/path/to/file.mp4', {
+  name: 'My Video',          // Torrent name
+  comment: 'Shared via WebTorrent',
+  createdBy: 'WebTorrent/1.0',
+  private: false,            // Enable DHT/PEX
+  announceList: [            // Custom trackers
+    ['udp://tracker.example.com:6969'],
+    ['wss://tracker.example.com']
+  ]
+}, torrent => {
+  console.log('Seeding torrent:', torrent.name)
+})
+```
+
+<Tip>
+  When you seed a file, WebTorrent automatically creates the .torrent metadata and starts announcing to trackers and DHT.
+</Tip>
+
+## Working with Files
+
+### Create a Read Stream
+
+In Node.js, you can create a standard Node.js readable stream:
+
+```javascript
+import fs from 'fs'
+
+client.add(magnetURI, torrent => {
+  const file = torrent.files[0]
+  
+  // Create a read stream
+  const stream = file.createReadStream()
+  
+  // Pipe to file
+  stream.pipe(fs.createWriteStream('/path/to/output.mp4'))
+  
+  // Or process chunks
+  stream.on('data', chunk => {
+    console.log('Received chunk:', chunk.length, 'bytes')
+  })
+  
+  stream.on('end', () => {
+    console.log('File stream complete')
+  })
+})
+```
+
+### Stream a Specific Range
+
+```javascript
+const file = torrent.files[0]
+
+// Stream bytes 1000-5000
+const stream = file.createReadStream({
+  start: 1000,
+  end: 5000
+})
+```
+
+### Get File as Buffer
+
+```javascript
+const file = torrent.files[0]
+const buffer = Buffer.from(await file.arrayBuffer())
+console.log('File size:', buffer.length)
+```
+
+## Setting Up an HTTP Server
+
+You can create an HTTP server to stream torrents over HTTP:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+const magnetURI = 'magnet:?xt=urn:btih:...'
+
+// Create HTTP server
+const server = client.createServer()
+server.listen(3000, () => {
+  console.log('Server listening on http://localhost:3000')
+})
+
+client.add(magnetURI, torrent => {
+  // Files are now accessible via HTTP
+  const file = torrent.files[0]
+  console.log('Stream URL:', `http://localhost:3000${file.streamURL}`)
+  
+  // Access torrents at:
+  // http://localhost:3000/webtorrent/<infoHash>/<file-path>
+})
+```
+
+### Server Configuration
+
+```javascript
+const server = client.createServer({
+  origin: '*',                    // CORS origin (default: '*')
+  hostname: 'localhost',          // Only accept requests to this hostname
+  path: '/torrents'              // Base path (default: '/webtorrent')
+})
+
+server.listen(8080)
+```
+
+<Note>
+  The HTTP server supports range requests, which enables seeking in video players.
+</Note>
+
+## Client Configuration
+
+Configure the WebTorrent client with advanced options:
+
+```javascript
+const client = new WebTorrent({
+  maxConns: 55,                // Max connections per torrent
+  nodeId: Buffer.from('...'),  // DHT node ID (20 bytes)
+  peerId: Buffer.from('...'),  // Wire protocol peer ID (20 bytes)
+  tracker: true,               // Enable trackers
+  dht: true,                   // Enable DHT
+  lsd: true,                   // Enable local service discovery
+  utPex: true,                 // Enable peer exchange
+  natUpnp: true,               // Enable NAT port mapping via UPnP
+  natPmp: true,                // Enable NAT port mapping via PMP
+  webSeeds: true,              // Enable web seeds
+  utp: true,                   // Enable uTorrent transport protocol
+  downloadLimit: -1,           // Download throttle (bytes/sec, -1 = unlimited)
+  uploadLimit: -1,             // Upload throttle (bytes/sec, -1 = unlimited)
+  blocklist: []                // List of blocked IPs
+})
+```
+
+### Bandwidth Throttling
+
+```javascript
+const client = new WebTorrent({
+  downloadLimit: 1000000,  // 1 MB/s
+  uploadLimit: 500000      // 500 KB/s
+})
+
+// Change limits dynamically
+client.throttleDownload(2000000)  // 2 MB/s
+client.throttleUpload(1000000)    // 1 MB/s
+
+// Disable throttling
+client.throttleDownload(-1)
+client.throttleUpload(-1)
+```
+
+### IP Blocklist
+
+```javascript
+const client = new WebTorrent({
+  blocklist: [
+    '1.2.3.4',
+    '5.6.7.0/24'
+  ]
+})
+
+// Or load from URL
+const client = new WebTorrent({
+  blocklist: 'https://example.com/blocklist.txt'
+})
+```
+
+## Torrent Options
+
+Configure individual torrents when adding them:
+
+```javascript
+client.add(magnetURI, {
+  path: '/downloads',              // Download location
+  announce: ['udp://...'],         // Additional trackers
+  maxWebConns: 4,                  // Max web seed connections
+  private: false,                  // Disable DHT/PEX for private torrents
+  strategy: 'sequential',          // Piece selection: 'sequential' or 'rarest'
+  storeCacheSlots: 20,             // Cache size (0 to disable)
+  skipVerify: false,               // Skip hash verification
+  destroyStoreOnDestroy: false     // Delete files when torrent destroyed
+}, torrent => {
+  console.log('Torrent added')
+})
+```
+
+## Monitoring and Events
+
+### Client Events
+
+```javascript
+client.on('torrent', torrent => {
+  console.log('Torrent ready:', torrent.name)
+})
+
+client.on('error', err => {
+  console.error('Fatal error:', err)
+})
+```
+
+### Torrent Events
+
+```javascript
+torrent.on('ready', () => {
+  console.log('Torrent metadata received')
+})
+
+torrent.on('download', bytes => {
+  console.log('Downloaded:', bytes, 'bytes')
+})
+
+torrent.on('upload', bytes => {
+  console.log('Uploaded:', bytes, 'bytes')
+})
+
+torrent.on('done', () => {
+  console.log('Download complete')
+})
+
+torrent.on('wire', (wire, addr) => {
+  console.log('Connected to peer:', addr)
+})
+
+torrent.on('noPeers', announceType => {
+  console.log('No peers found via', announceType)
+})
+```
+
+## Statistics
+
+Access real-time statistics:
+
+```javascript
+// Client-level stats
+console.log('Download speed:', client.downloadSpeed, 'bytes/sec')
+console.log('Upload speed:', client.uploadSpeed, 'bytes/sec')
+console.log('Progress:', (client.progress * 100).toFixed(1) + '%')
+console.log('Ratio:', client.ratio)
+
+// Torrent-level stats
+console.log('Downloaded:', torrent.downloaded, 'bytes')
+console.log('Uploaded:', torrent.uploaded, 'bytes')
+console.log('Download speed:', torrent.downloadSpeed, 'bytes/sec')
+console.log('Upload speed:', torrent.uploadSpeed, 'bytes/sec')
+console.log('Progress:', (torrent.progress * 100).toFixed(1) + '%')
+console.log('Ratio:', torrent.ratio)
+console.log('Time remaining:', torrent.timeRemaining, 'ms')
+console.log('Peers:', torrent.numPeers)
+```
+
+## Cleanup
+
+### Remove a Torrent
+
+```javascript
+// Remove but keep files
+await client.remove(torrentId)
+
+// Remove and delete files
+await client.remove(torrentId, { destroyStore: true })
+```
+
+### Destroy Client
+
+```javascript
+client.destroy(err => {
+  if (err) console.error('Error:', err)
+  else console.log('Client destroyed')
+})
+```
+
+## Complete Example
+
+Here's a complete example that downloads a torrent and serves it over HTTP:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+const magnetURI = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10'
+
+// Create HTTP server
+const server = client.createServer()
+server.listen(8000, () => {
+  console.log('Server listening on http://localhost:8000')
+})
+
+// Add torrent
+client.add(magnetURI, { path: './downloads' }, torrent => {
+  console.log('Downloading:', torrent.name)
+  
+  // Print progress every second
+  const interval = setInterval(() => {
+    console.log('Progress:', (torrent.progress * 100).toFixed(1) + '%')
+    console.log('Download:', torrent.downloadSpeed, 'bytes/sec')
+    console.log('Upload:', torrent.uploadSpeed, 'bytes/sec')
+    console.log('Peers:', torrent.numPeers)
+    console.log('---')
+  }, 1000)
+  
+  // List files and URLs
+  torrent.files.forEach(file => {
+    console.log('File:', file.name)
+    console.log('URL:', `http://localhost:8000${file.streamURL}`)
+  })
+  
+  torrent.on('done', () => {
+    clearInterval(interval)
+    console.log('Download complete!')
+  })
+})
+
+// Graceful shutdown
+process.on('SIGINT', () => {
+  client.destroy(() => {
+    console.log('Client destroyed')
+    process.exit(0)
+  })
+})
+```
+
+## Debug Logging
+
+Enable debug logs to troubleshoot issues:
+
+```bash
+DEBUG=* node app.js
+DEBUG=webtorrent* node app.js
+DEBUG=bittorrent-protocol node app.js
+```

@@ -1,0 +1,347 @@
+---
+title: Configuration Options
+description: Complete reference for WebTorrent configuration options
+---
+
+## Client Options
+
+Options passed to the `WebTorrent` constructor:
+
+```js
+const client = new WebTorrent({
+  maxConns: 100,
+  dht: true,
+  tracker: true
+  // ... more options
+})
+```
+
+### Connection Settings
+
+<ParamField path="maxConns" type="number" default={55}>
+  Maximum number of connections per torrent
+</ParamField>
+
+<ParamField path="seedOutgoingConnections" type="boolean" default={true}>
+  If `true`, establish outgoing connections while seeding. If `false`, only respond to incoming connections when seeding.
+</ParamField>
+
+### Identity Settings
+
+<ParamField path="peerId" type="string | Uint8Array" optional>
+  Wire protocol peer ID (default: randomly generated). Must be 20 bytes.
+</ParamField>
+
+<ParamField path="nodeId" type="string | Uint8Array" optional>
+  DHT protocol node ID (default: randomly generated). Must be 20 bytes.
+</ParamField>
+
+### Discovery Settings
+
+<ParamField path="tracker" type="boolean | object" default={true}>
+  Enable tracker support. Can be:
+  - `true` - Enable with default options
+  - `false` - Disable tracker support
+  - `object` - Enable with custom options (see [bittorrent-tracker](https://github.com/webtorrent/bittorrent-tracker#client) docs)
+  
+  If an object, can include:
+  - `announce` - Array of tracker URLs to add to all torrents
+  - `wrtc` - Custom WebRTC implementation
+</ParamField>
+
+```js
+new WebTorrent({
+  tracker: {
+    announce: ['wss://tracker.example.com'],
+    wrtc: customWRTC
+  }
+})
+```
+
+<ParamField path="dht" type="boolean | object" default={true}>
+  Enable DHT support. Can be:
+  - `true` - Enable with default options
+  - `false` - Disable DHT
+  - `object` - Enable with custom options (see [bittorrent-dht](https://github.com/webtorrent/bittorrent-dht#dht--new-dhtopts) docs)
+</ParamField>
+
+<ParamField path="lsd" type="boolean" default={true}>
+  Enable BEP14 local service discovery
+</ParamField>
+
+<ParamField path="utPex" type="boolean" default={true}>
+  Enable BEP11 Peer Exchange
+</ParamField>
+
+<ParamField path="webSeeds" type="boolean" default={true}>
+  Enable BEP19 web seeds
+</ParamField>
+
+### Network Settings
+
+<ParamField path="utp" type="boolean" default={true}>
+  Enable BEP29 uTorrent transport protocol (Node.js only)
+</ParamField>
+
+<ParamField path="natUpnp" type="boolean | string" default={true}>
+  Enable NAT port mapping via UPnP (Node.js only). Can be:
+  - `true` - Use temporary mapping
+  - `'permanent'` - Use permanent TTL if router only supports permanent leases
+  - `false` - Disable UPnP
+</ParamField>
+
+<ParamField path="natPmp" type="boolean" default={true}>
+  Enable NAT port mapping via NAT-PMP (Node.js only). If both `natUpnp` and `natPmp` are true, PMP is attempted first, then falls back to UPnP.
+</ParamField>
+
+<ParamField path="torrentPort" type="number" default={0}>
+  Port for incoming torrent connections (Node.js only). `0` = random port.
+</ParamField>
+
+<ParamField path="dhtPort" type="number" default={0}>
+  Port for DHT (Node.js only). `0` = random port.
+</ParamField>
+
+### Bandwidth Settings
+
+<ParamField path="downloadLimit" type="number" default={-1}>
+  Maximum download speed in bytes/sec for all torrents. Can be:
+  - `> 0` - Set throttle at that speed
+  - `0` - Block all downloads
+  - `-1` - Disable throttling (use full bandwidth)
+</ParamField>
+
+<ParamField path="uploadLimit" type="number" default={-1}>
+  Maximum upload speed in bytes/sec for all torrents. Can be:
+  - `> 0` - Set throttle at that speed
+  - `0` - Block all uploads
+  - `-1` - Disable throttling (use full bandwidth)
+</ParamField>
+
+```js
+new WebTorrent({
+  downloadLimit: 1000000, // 1 MB/s
+  uploadLimit: 500000     // 500 KB/s
+})
+```
+
+### Security Settings
+
+<ParamField path="blocklist" type="Array<string> | string" optional>
+  List of IP addresses to block. Can be:
+  - Array of IP ranges
+  - URL to a blocklist file
+  
+  See [load-ip-set](https://github.com/webtorrent/load-ip-set#usage) docs for details.
+</ParamField>
+
+```js
+new WebTorrent({
+  blocklist: [
+    '1.2.3.4',
+    '5.6.7.8/16'
+  ]
+})
+```
+
+<ParamField path="secure" type="boolean" default={false}>
+  Enable secure peer connections (experimental)
+</ParamField>
+
+## Torrent Options
+
+Options passed to `client.add()` or `client.seed()`:
+
+```js
+client.add(magnetURI, {
+  path: '/downloads',
+  maxWebConns: 4
+  // ... more options
+})
+```
+
+### Discovery Options
+
+<ParamField path="announce" type="Array<string>" optional>
+  Additional tracker URLs to use (added to those in .torrent or magnet URI)
+</ParamField>
+
+```js
+client.add(magnetURI, {
+  announce: [
+    'wss://tracker1.example.com',
+    'wss://tracker2.example.com'
+  ]
+})
+```
+
+<ParamField path="getAnnounceOpts" type="function" optional>
+  Custom callback to send extra parameters to trackers
+</ParamField>
+
+```js
+client.add(magnetURI, {
+  getAnnounceOpts: () => ({
+    numwant: 50,
+    key: 'custom-key'
+  })
+})
+```
+
+<ParamField path="urlList" type="Array<string>" optional>
+  Array of web seed URLs (BEP19)
+</ParamField>
+
+<ParamField path="maxWebConns" type="number" default={4}>
+  Maximum number of simultaneous connections per web seed
+</ParamField>
+
+<ParamField path="private" type="boolean" optional>
+  If `true`, client will not share the hash with DHT or PEX. Default is the privacy setting from the torrent.
+</ParamField>
+
+### Storage Options
+
+<ParamField path="path" type="string" default="/tmp/webtorrent/">
+  Folder to download files to
+</ParamField>
+
+<ParamField path="addUID" type="boolean" default={false}>
+  (Node.js only) If `true`, store files in an infoHash subfolder to prevent name collisions
+</ParamField>
+
+```js
+// Files saved to: /downloads/<infoHash>/filename
+client.add(magnetURI, {
+  path: '/downloads',
+  addUID: true
+})
+```
+
+<ParamField path="rootDir" type="FileSystemDirectoryHandle" optional>
+  (Browser only) Custom directory handle for File System Access API. Retains torrent folder structure.
+</ParamField>
+
+<ParamField path="store" type="Function" optional>
+  Custom chunk store constructor. Must follow [abstract-chunk-store](https://www.npmjs.com/package/abstract-chunk-store) API.
+</ParamField>
+
+```js
+import MemoryChunkStore from 'memory-chunk-store'
+
+client.add(magnetURI, {
+  store: MemoryChunkStore
+})
+```
+
+<ParamField path="preloadedStore" type="Function" optional>
+  Pre-loaded chunk store instance
+</ParamField>
+
+<ParamField path="storeOpts" type="object" optional>
+  Custom options passed to the store constructor
+</ParamField>
+
+<ParamField path="storeCacheSlots" type="number" default={20}>
+  Number of pieces to cache in memory. Set to `0` to disable caching.
+</ParamField>
+
+<ParamField path="destroyStoreOnDestroy" type="boolean" default={false}>
+  If `true`, delete files from disk when torrent is destroyed
+</ParamField>
+
+### Download Options
+
+<ParamField path="strategy" type="'rarest' | 'sequential'" default="sequential">
+  Piece selection strategy
+</ParamField>
+
+<ParamField path="skipVerify" type="boolean" default={false}>
+  If `true`, skip verification of existing pieces and assume they're correct
+</ParamField>
+
+<ParamField path="bitfield" type="Uint8Array" optional>
+  Pre-loaded bitfield indicating which pieces are already downloaded
+</ParamField>
+
+```js
+client.add(magnetURI, {
+  skipVerify: true,
+  bitfield: existingBitfield
+})
+```
+
+<ParamField path="paused" type="boolean" default={false}>
+  If `true`, create the torrent in a paused state
+</ParamField>
+
+<ParamField path="deselect" type="boolean" default={false}>
+  If `true`, create the torrent with no pieces selected
+</ParamField>
+
+### Upload Options
+
+<ParamField path="uploads" type="number | false" default={10}>
+  Maximum number of upload slots. Set to `false` or `0` to disable uploading.
+</ParamField>
+
+<ParamField path="alwaysChokeSeeders" type="boolean" default={true}>
+  If `true`, automatically choke seeders when seeding
+</ParamField>
+
+### Advanced Options
+
+<ParamField path="noPeersIntervalTime" type="number" default={30}>
+  Time in seconds to wait between `noPeers` event checks
+</ParamField>
+
+<ParamField path="fileModtimes" type="Array<number>" optional>
+  Array of UNIX timestamps indicating last modification time for each file. Used to skip verification if files haven't changed.
+</ParamField>
+
+## Seed Options
+
+Options passed to `client.seed()` include all torrent options plus create-torrent options:
+
+### Torrent Creation
+
+<ParamField path="name" type="string" optional>
+  Name of the torrent. If not provided, determined automatically from file names.
+</ParamField>
+
+<ParamField path="comment" type="string" optional>
+  Comment to include in the torrent
+</ParamField>
+
+<ParamField path="createdBy" type="string" default="WebTorrent/<version>">
+  Creator/editor of the torrent
+</ParamField>
+
+<ParamField path="creationDate" type="Date | number" optional>
+  Creation date (default: now)
+</ParamField>
+
+<ParamField path="pieceLength" type="number" optional>
+  Piece length in bytes (default: auto-calculated)
+</ParamField>
+
+<ParamField path="private" type="boolean" default={false}>
+  If `true`, don't announce on DHT or allow PEX
+</ParamField>
+
+<ParamField path="info" type="object" optional>
+  Additional info dict fields
+</ParamField>
+
+```js
+client.seed(files, {
+  name: 'My Torrent',
+  comment: 'Created with WebTorrent',
+  private: true,
+  announce: ['wss://tracker.example.com']
+}, torrent => {
+  console.log('Seeding:', torrent.magnetURI)
+})
+```
+
+For more create-torrent options, see [create-torrent docs](https://github.com/webtorrent/create-torrent#createtorrentinput-opts-function-callback-err-torrent-).

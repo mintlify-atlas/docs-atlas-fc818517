@@ -1,0 +1,133 @@
+---
+title: Introduction
+description: Streaming torrent client for Node.js and the browser using WebRTC
+---
+
+<div className="bg-[#F3F4F6] dark:bg-[#2c374a] rounded-lg p-8 mb-8">
+  <h1 className="text-[40px] font-bold text-[#4B4B4B] dark:text-white mb-4" style={{ fontFamily: 'Inter, sans-serif' }}>
+    WebTorrent
+  </h1>
+  <p className="text-[18px] text-[#4B4B4B] dark:text-gray-300 mb-6" style={{ fontFamily: 'Inter, sans-serif' }}>
+    The streaming torrent client for Node.js and the web. YEP, THAT'S RIGHT. THE BROWSER.
+  </p>
+  <div className="flex gap-4">
+    <a 
+      href="/quickstart" 
+      className="inline-block bg-[#28a745] text-white px-6 py-3 rounded font-semibold hover:opacity-90 transition-opacity"
+      style={{ fontFamily: 'Inter, sans-serif', borderRadius: '4px' }}
+    >
+      Get Started
+    </a>
+    <a 
+      href="https://github.com/webtorrent/webtorrent" 
+      className="inline-block bg-transparent text-black dark:text-white px-6 py-3 border border-black dark:border-white font-semibold hover:opacity-70 transition-opacity"
+      style={{ fontFamily: 'Inter, sans-serif', borderRadius: '0px' }}
+    >
+      View on GitHub
+    </a>
+  </div>
+</div>
+
+## What is WebTorrent?
+
+WebTorrent is a streaming torrent client for **Node.js** and the **browser**. It's written completely in JavaScript – the language of the web – so the same code works in both runtimes.
+
+In Node.js, this module is a simple torrent client, using TCP and UDP to talk to other torrent clients.
+
+In the browser, WebTorrent uses **WebRTC** (data channels) for peer-to-peer transport. It can be used **without** browser plugins, extensions, or installations. It's Just JavaScript™.
+
+<Note>
+WebTorrent does **not** support UDP/TCP peers in the browser. For seeding files to web peers, use a client that supports WebRTC such as WebTorrent Desktop, webtorrent-hybrid, or Instant.io.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Streaming Downloads" icon="film">
+    Fetch pieces from the network on-demand so seeking is supported even before the torrent is finished
+  </Card>
+  <Card title="Cross-Platform" icon="globe">
+    Same API works in Node.js and the browser with no code changes required
+  </Card>
+  <Card title="WebRTC P2P" icon="network-wired">
+    Uses WebRTC data channels for lightweight peer-to-peer communication in the browser
+  </Card>
+  <Card title="Pure JavaScript" icon="code">
+    No native dependencies, works everywhere JavaScript runs
+  </Card>
+  <Card title="Protocol Extensions" icon="puzzle-piece">
+    Supports magnet URIs, DHT, trackers, LSD, and peer exchange
+  </Card>
+  <Card title="Fast & Efficient" icon="gauge-high">
+    Download multiple torrents simultaneously with intelligent piece selection
+  </Card>
+</CardGroup>
+
+## How It Works
+
+WebTorrent is the first BitTorrent client that works in the browser, using open web standards (no plugins, just HTML5 and WebRTC).
+
+To make BitTorrent work over WebRTC (which is the only P2P transport that works on the web), we made some protocol changes. Therefore, a browser-based WebTorrent client or **"web peer"** can only connect to other clients that support WebRTC.
+
+<div className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg my-6">
+  <img 
+    src="https://webtorrent.io/img/network.png" 
+    alt="WebTorrent Network Architecture"
+    className="w-full"
+  />
+</div>
+
+## Quick Example
+
+Get started with WebTorrent in just a few lines of code:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+const magnetURI = 'magnet:...'
+
+client.add(magnetURI, torrent => {
+  // Got torrent metadata!
+  console.log('Client is downloading:', torrent.infoHash)
+
+  for (const file of torrent.files) {
+    console.log('File:', file.name)
+  }
+})
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install WebTorrent via npm or use it directly in the browser
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running with your first torrent in minutes
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/webtorrent">
+    Explore the complete WebTorrent API documentation
+  </Card>
+  <Card title="Examples" icon="code-branch" href="/resources/examples">
+    See real-world examples and use cases
+  </Card>
+</CardGroup>
+
+## Browser/WebRTC Features
+
+- **WebRTC data channels** for lightweight peer-to-peer communication with **no plugins**
+- **No silos.** WebTorrent is a P2P network for the **entire web**. WebTorrent clients running on one domain can connect to clients on any other domain
+- Stream video torrents into a `<video>` tag (webm, mkv, mp4, ogv, mov, etc with AV1, H264, HEVC, VP8, VP9, AAC, FLAC, MP3, OPUS, Vorbis support)
+- Supports Chrome, Firefox, Opera, and Safari
+
+## Who's Using WebTorrent?
+
+WebTorrent is used by popular applications including:
+
+- **Instant.io** - Streaming file transfer over WebTorrent
+- **WebTorrent Desktop** - Beautiful desktop torrent client for Mac, Windows, and Linux
+- **PeerTube** - Decentralized video streaming platform
+- **Brave Browser** - Privacy-focused browser with built-in torrent support
+
+And many more! See the [FAQ](/resources/faq) for a complete list.

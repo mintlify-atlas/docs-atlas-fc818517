@@ -1,0 +1,318 @@
+---
+title: 'BitTorrent Enhancement Proposals Support'
+description: 'Complete reference of BEP support in WebTorrent for Node.js and browser environments'
+---
+
+WebTorrent implements a comprehensive set of BitTorrent Enhancement Proposals (BEPs) that define the protocols and extensions used in modern BitTorrent clients. Support varies between Node.js and browser environments due to platform limitations.
+
+## Understanding BEP Support
+
+BitTorrent Enhancement Proposals (BEPs) are the standardized specifications that extend and improve the BitTorrent protocol. WebTorrent implements many of these proposals, with some differences between Node.js and browser environments.
+
+<Note>
+  Browser implementations are limited by web platform capabilities. Features requiring UDP/TCP sockets or system-level networking are only available in Node.js.
+</Note>
+
+## Core Protocol Support
+
+### BEP 5: Distributed Hash Table (DHT)
+
+**Status:** ✅ Node.js | ❌ Browser
+
+[BEP 5](https://www.bittorrent.org/beps/bep_0005.html) defines the distributed hash table for decentralized peer discovery.
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+// Enable DHT in Node.js (enabled by default)
+const client = new WebTorrent({
+  dht: true, // or pass DHT options object
+  nodeId: '...', // optional DHT node ID
+  dhtPort: 6881 // optional DHT port
+})
+
+// Access DHT instance
+client.dht.on('listening', () => {
+  console.log('DHT listening on port:', client.dht.address().port)
+})
+```
+
+<Warning>
+  DHT is not available in browser environments due to UDP socket requirements. Browsers rely on WebRTC trackers and PEX for peer discovery.
+</Warning>
+
+### BEP 6: Fast Extension
+
+**Status:** ✅ Node.js | ✅ Browser
+
+[BEP 6](https://www.bittorrent.org/beps/bep_0006.html) adds fast peer rejection and "have all/none" messages to improve performance.
+
+This extension is automatically enabled and handles:
+- `HAVE_ALL` and `HAVE_NONE` messages
+- `SUGGEST_PIECE` messages
+- `REJECT_REQUEST` messages
+- `ALLOWED_FAST` messages
+
+No configuration required - WebTorrent handles this automatically.
+
+### BEP 9: Magnet Links
+
+**Status:** ✅ Node.js | ✅ Browser
+
+[BEP 9](https://www.bittorrent.org/beps/bep_0009.html) enables downloading torrents using magnet URIs without .torrent files.
+
+```javascript
+const magnetURI = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10'
+
+client.add(magnetURI, torrent => {
+  console.log('Downloading:', torrent.name)
+  console.log('InfoHash:', torrent.infoHash)
+})
+```
+
+### BEP 10: Extension Protocol
+
+**Status:** ✅ Node.js | ✅ Browser
+
+[BEP 10](https://www.bittorrent.org/beps/bep_0010.html) provides the framework for protocol extensions, enabling features like metadata exchange and peer exchange.
+
+See the [Extensions](/advanced/extensions) documentation for details on creating custom extensions.
+
+## Peer Discovery
+
+### BEP 11: Peer Exchange (PEX)
+
+**Status:** ✅ Node.js | ⚠️ Browser (partial)
+
+[BEP 11](https://www.bittorrent.org/beps/bep_0011.html) enables peers to exchange peer lists, improving swarm connectivity.
+
+```javascript
+// Enable or disable PEX
+const client = new WebTorrent({
+  utPex: true // enabled by default in Node.js
+})
+```
+
+<Accordion title="Browser PEX Limitations">
+  PEX in browsers is partially implemented. While the protocol works, browser peers can only exchange WebRTC peer information, not TCP/UDP peers. See [issue #1191](https://github.com/webtorrent/webtorrent/issues/1191).
+</Accordion>
+
+### BEP 14: Local Service Discovery (LSD)
+
+**Status:** ✅ Node.js | ❌ Browser
+
+[BEP 14](https://www.bittorrent.org/beps/bep_0014.html) discovers peers on the local network using UDP multicast.
+
+```javascript
+// Enable LSD in Node.js (enabled by default)
+const client = new WebTorrent({
+  lsd: true
+})
+```
+
+<Info>
+  LSD cannot be implemented in browsers due to lack of multicast UDP support.
+</Info>
+
+### BEP 15: UDP Tracker Protocol
+
+**Status:** ✅ Node.js | ❌ Browser
+
+[BEP 15](https://www.bittorrent.org/beps/bep_0015.html) defines the UDP tracker protocol for efficient tracker communication.
+
+Automatically used in Node.js when torrents have UDP tracker URLs (`udp://...`).
+
+## Web Seeds and HTTP
+
+### BEP 19: WebSeed - HTTP/FTP Seeding
+
+**Status:** ✅ Node.js | ✅ Browser
+
+[BEP 19](https://www.bittorrent.org/beps/bep_0019.html) allows downloading from HTTP/FTP servers alongside peer-to-peer transfers.
+
+```javascript
+// Enable web seeds (enabled by default)
+const client = new WebTorrent({
+  webSeeds: true
+})
+
+// Add custom web seeds when creating torrent
+client.seed(files, {
+  urlList: [
+    'https://example.com/files/',
+    'https://mirror.com/content/'
+  ]
+}, torrent => {
+  console.log('Seeding with web seeds')
+})
+```
+
+<Accordion title="Web Seed Configuration">
+  Configure maximum concurrent web seed connections per torrent:
+
+  ```javascript
+  client.add(magnetURI, {
+    maxWebConns: 4 // default is 4
+  })
+  ```
+</Accordion>
+
+## Tracker Extensions
+
+### BEP 23: Tracker Returns Compact Peer Lists
+
+**Status:** ✅ Node.js | ⚠️ Not implemented
+
+[BEP 23](https://www.bittorrent.org/beps/bep_0023.html) enables trackers to return peer lists in compact binary format.
+
+Supported in Node.js for efficient peer list parsing.
+
+### BEP 48: Tracker Protocol Extension: Scrape
+
+**Status:** ✅ Node.js | ✅ Browser
+
+[BEP 48](https://www.bittorrent.org/beps/bep_0048.html) allows querying tracker statistics without announcing.
+
+Automatically used when available.
+
+## Privacy and Security
+
+### BEP 27: Private Torrents
+
+**Status:** ✅ Node.js | ✅ Browser
+
+[BEP 27](https://www.bittorrent.org/beps/bep_0027.html) prevents DHT and PEX sharing for private tracker torrents.
+
+```javascript
+// Torrent files with 'private: 1' flag automatically enforce privacy
+// You can also manually override:
+client.add(torrentId, {
+  private: true // disable DHT and PEX for this torrent
+})
+```
+
+<Warning>
+  Private torrents will not be announced to the DHT or shared via PEX. Only tracker announces will occur.
+</Warning>
+
+## Transport Protocol
+
+### BEP 29: uTorrent Transport Protocol (uTP)
+
+**Status:** ✅ Node.js | ❌ Browser
+
+[BEP 29](https://www.bittorrent.org/beps/bep_0029.html) defines the uTP protocol for congestion control and NAT traversal.
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+// Check if uTP is supported (requires utp-native)
+console.log('uTP support:', WebTorrent.UTP_SUPPORT)
+
+// Enable/disable uTP (enabled by default if available)
+const client = new WebTorrent({
+  utp: true
+})
+```
+
+<Info>
+  uTP support requires the optional `utp-native` dependency. Install with: `npm install utp-native`
+</Info>
+
+## Advanced Features
+
+### BEP 53: Magnet URI Extension - Select Specific Files
+
+**Status:** ✅ Node.js | ✅ Browser
+
+[BEP 53](https://www.bittorrent.org/beps/bep_0053.html) enables selective file downloads using magnet links.
+
+```javascript
+// Download only specific file indices
+const magnet = 'magnet:?xt=urn:btih:...&so=0,2,4'
+
+client.add(magnet, torrent => {
+  // Files 0, 2, and 4 will be downloaded
+  // Other files will be deselected
+})
+
+// Or select files programmatically
+torrent.deselect(0, torrent.pieces.length - 1, false)
+torrent.files.forEach((file, index) => {
+  if (index === 0 || index === 2 || index === 4) {
+    file.select()
+  }
+})
+```
+
+## Not Yet Implemented
+
+The following BEPs are not currently implemented but may be added in the future:
+
+<CardGroup cols={2}>
+  <Accordion title="BEP 7: IPv6 Tracker Extension">
+    [BEP 7](https://www.bittorrent.org/beps/bep_0007.html) - IPv6 support for tracker communication.
+    
+    **Status:** Planned
+  </Accordion>
+
+  <Accordion title="BEP 32: DHT Extensions for IPv6">
+    [BEP 32](https://www.bittorrent.org/beps/bep_0032.html) - IPv6 support in the DHT.
+    
+    **Status:** Planned - See [issue #88](https://github.com/webtorrent/bittorrent-dht/issues/88)
+  </Accordion>
+
+  <Accordion title="BEP 44: Storing Arbitrary Data in DHT">
+    [BEP 44](https://www.bittorrent.org/beps/bep_0044.html) - Store mutable and immutable data in the DHT.
+    
+    **Status:** Under consideration
+  </Accordion>
+
+  <Accordion title="BEP 46: Updating Torrents via DHT">
+    [BEP 46](https://www.bittorrent.org/beps/bep_0046.html) - Dynamic torrent updates using DHT.
+    
+    **Status:** Planned - See [issue #886](https://github.com/webtorrent/webtorrent/issues/886)
+  </Accordion>
+
+  <Accordion title="BEP 52: BitTorrent Protocol v2">
+    [BEP 52](https://www.bittorrent.org/beps/bep_0052.html) - Next generation BitTorrent protocol with improved hashing.
+    
+    **Status:** Planned - See [issue #1117](https://github.com/webtorrent/webtorrent/issues/1117)
+  </Accordion>
+</CardGroup>
+
+## Platform Comparison
+
+<Accordion title="Full BEP Support Comparison Table">
+  | BEP | Feature | Node.js | Browser |
+  |-----|---------|---------|----------|
+  | 5 | DHT | ✅ | ❌ |
+  | 6 | Fast Extension | ✅ | ✅ |
+  | 9 | Magnet Links | ✅ | ✅ |
+  | 10 | Extension Protocol | ✅ | ✅ |
+  | 11 | Peer Exchange (PEX) | ✅ | ⚠️ |
+  | 14 | Local Service Discovery | ✅ | ❌ |
+  | 15 | UDP Tracker | ✅ | ❌ |
+  | 19 | WebSeeds | ✅ | ✅ |
+  | 23 | Compact Peer Lists | ✅ | ❌ |
+  | 27 | Private Torrents | ✅ | ✅ |
+  | 29 | uTP Protocol | ✅ | ❌ |
+  | 48 | Tracker Scrape | ✅ | ✅ |
+  | 53 | Selective Downloads | ✅ | ✅ |
+
+  **Legend:**
+  - ✅ Fully supported
+  - ⚠️ Partially supported or limited
+  - ❌ Not supported (platform limitation)
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Protocol Extensions" icon="puzzle-piece" href="/advanced/extensions">
+    Learn how to create custom protocol extensions
+  </Card>
+  <Card title="Performance" icon="gauge" href="/advanced/performance">
+    Optimize your WebTorrent implementation
+  </Card>
+</CardGroup>

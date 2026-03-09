@@ -1,0 +1,488 @@
+---
+title: Streaming Video and Audio
+description: Learn how to stream media files from torrents with WebTorrent
+---
+
+WebTorrent excels at streaming media content. Playback starts before the full file downloads, and seeking is supported by dynamically fetching needed pieces from the network.
+
+## How Streaming Works
+
+WebTorrent uses intelligent piece selection to prioritize the pieces needed for playback:
+
+1. **On-demand fetching**: Only downloads pieces needed for current playback position
+2. **Smart buffering**: Pre-fetches upcoming pieces to prevent stuttering
+3. **Range request support**: Enables seeking to any position in the file
+4. **Adaptive selection**: Switches between sequential and rarest-first piece selection
+
+## Streaming in the Browser
+
+<Steps>
+  <Step title="Set up the service worker">
+    First, register a service worker to enable HTTP streaming:
+    
+    ```javascript
+    const controller = await navigator.serviceWorker.register('./sw.min.js', { 
+      scope: './' 
+    })
+    await navigator.serviceWorker.ready
+    ```
+  </Step>
+
+  <Step title="Create the server">
+    ```javascript
+    import WebTorrent from 'webtorrent'
+    
+    const client = new WebTorrent()
+    client.createServer({ controller })
+    ```
+  </Step>
+
+  <Step title="Stream to a video element">
+    ```javascript
+    const magnetURI = 'magnet:?xt=urn:btih:...'
+    
+    client.add(magnetURI, torrent => {
+      const file = torrent.files.find(f => f.name.endsWith('.mp4'))
+      
+      // Stream directly to video element
+      const video = document.querySelector('video')
+      file.streamTo(video)
+    })
+    ```
+  </Step>
+</Steps>
+
+### Complete Browser Example
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WebTorrent Streaming</title>
+  <style>
+    video {
+      width: 100%;
+      max-width: 800px;
+    }
+    #stats {
+      font-family: monospace;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebTorrent Video Player</h1>
+  <video controls></video>
+  <div id="stats"></div>
+
+  <script type="module">
+    import WebTorrent from 'https://esm.sh/webtorrent/dist/webtorrent.min.js'
+
+    const client = new WebTorrent()
+    const video = document.querySelector('video')
+    const stats = document.querySelector('#stats')
+
+    // Sintel, a free Creative Commons movie
+    const magnetURI = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel'
+
+    async function startStream() {
+      // Set up service worker
+      const controller = await navigator.serviceWorker.register('./sw.min.js', { 
+        scope: './' 
+      })
+      await navigator.serviceWorker.ready
+      client.createServer({ controller })
+
+      // Add torrent
+      client.add(magnetURI, torrent => {
+        // Find video file
+        const file = torrent.files.find(f => f.name.endsWith('.mp4'))
+        
+        // Stream to video element
+        file.streamTo(video)
+
+        // Update stats
+        setInterval(() => {
+          stats.innerHTML = `
+            <strong>${torrent.name}</strong><br>
+            Progress: ${(torrent.progress * 100).toFixed(1)}%<br>
+            Download speed: ${(torrent.downloadSpeed / 1024).toFixed(1)} KB/s<br>
+            Upload speed: ${(torrent.uploadSpeed / 1024).toFixed(1)} KB/s<br>
+            Peers: ${torrent.numPeers}
+          `
+        }, 1000)
+      })
+    }
+
+    startStream()
+  </script>
+</body>
+</html>
+```
+
+## Streaming in Node.js
+
+In Node.js, you can create an HTTP server to stream torrents:
+
+<Steps>
+  <Step title="Create HTTP server">
+    ```javascript
+    import WebTorrent from 'webtorrent'
+    
+    const client = new WebTorrent()
+    const server = client.createServer()
+    
+    server.listen(8000, () => {
+      console.log('Server listening on http://localhost:8000')
+    })
+    ```
+  </Step>
+
+  <Step title="Add torrent">
+    ```javascript
+    const magnetURI = 'magnet:?xt=urn:btih:...'
+    
+    client.add(magnetURI, torrent => {
+      console.log('Torrent ready:', torrent.name)
+      
+      torrent.files.forEach(file => {
+        console.log('Stream URL:', `http://localhost:8000${file.streamURL}`)
+      })
+    })
+    ```
+  </Step>
+
+  <Step title="Access the stream">
+    Open the stream URL in a browser or media player:
+    ```
+    http://localhost:8000/webtorrent/<infoHash>/<file-path>
+    ```
+  </Step>
+</Steps>
+
+### Node.js Streaming Server
+
+```javascript
+import WebTorrent from 'webtorrent'
+import http from 'http'
+
+const client = new WebTorrent()
+
+// Create HTTP server with custom configuration
+const server = client.createServer({
+  origin: '*',           // Allow all origins
+  hostname: 'localhost'  // Only accept requests to localhost
+})
+
+server.listen(8000, () => {
+  console.log('Streaming server listening on http://localhost:8000')
+})
+
+// Add a torrent
+const magnetURI = process.argv[2] || 'magnet:?xt=urn:btih:...'
+
+client.add(magnetURI, torrent => {
+  console.log('\nTorrent:', torrent.name)
+  console.log('Files:')
+  
+  torrent.files.forEach((file, index) => {
+    console.log(`  [${index}] ${file.name}`)
+    console.log(`      ${file.length} bytes`)
+    console.log(`      http://localhost:8000${file.streamURL}`)
+  })
+  
+  console.log('\nStats:')
+  setInterval(() => {
+    console.log(`Progress: ${(torrent.progress * 100).toFixed(1)}%`)
+    console.log(`Download: ${(torrent.downloadSpeed / 1024).toFixed(1)} KB/s`)
+    console.log(`Upload: ${(torrent.uploadSpeed / 1024).toFixed(1)} KB/s`)
+    console.log(`Peers: ${torrent.numPeers}`)
+    console.log('---')
+  }, 2000)
+})
+```
+
+## Using Stream URLs
+
+The `streamURL` property provides a URL that can be used in media players:
+
+```javascript
+client.add(magnetURI, torrent => {
+  const file = torrent.files[0]
+  
+  // Get the stream URL
+  const url = file.streamURL
+  // Example: /webtorrent/08ada5a7a6183aae1e09d831df6748d566095a10/Sintel.mp4
+  
+  // Use in video element
+  const video = document.querySelector('video')
+  video.src = url
+  
+  // Or create a download link
+  const a = document.createElement('a')
+  a.href = url
+  a.download = file.name
+  a.textContent = 'Download ' + file.name
+  document.body.appendChild(a)
+})
+```
+
+## Streaming with Node.js Streams
+
+For programmatic access, use Node.js readable streams:
+
+```javascript
+import fs from 'fs'
+
+client.add(magnetURI, torrent => {
+  const file = torrent.files[0]
+  
+  // Create readable stream
+  const stream = file.createReadStream()
+  
+  // Pipe to file
+  stream.pipe(fs.createWriteStream('/path/to/output.mp4'))
+  
+  // Or handle chunks
+  stream.on('data', chunk => {
+    console.log('Received:', chunk.length, 'bytes')
+  })
+  
+  stream.on('end', () => {
+    console.log('Stream complete')
+  })
+})
+```
+
+### Streaming Partial Content
+
+Stream only a specific byte range:
+
+```javascript
+const file = torrent.files[0]
+
+// Stream bytes 1MB to 5MB
+const stream = file.createReadStream({
+  start: 1024 * 1024,      // 1 MB
+  end: 5 * 1024 * 1024     // 5 MB
+})
+
+stream.pipe(process.stdout)
+```
+
+## Supported Media Formats
+
+WebTorrent can stream any file format, but browser playback depends on codec support:
+
+### Video Containers
+
+<Tabs>
+  <Tab title="Widely Supported">
+    - **MP4** (.mp4, .m4v) - Best compatibility
+    - **WebM** (.webm) - Modern browsers
+    - **OGG** (.ogv, .ogm) - Most browsers
+  </Tab>
+  <Tab title="Limited Support">
+    - **MKV** (.mkv) - Chrome, Edge (not Firefox)
+    - **MOV** (.mov) - Most browsers
+    - **3GP** (.3gp) - Most browsers
+  </Tab>
+  <Tab title="Not Supported">
+    - **AVI** (.avi) - No browser support
+    - **MPEG** (.mpeg, .mpg) - No browser support
+    - **M2TS** (.m2ts) - Limited support
+  </Tab>
+</Tabs>
+
+### Video Codecs
+
+- **H.264** (AVC) - Universal support ✓
+- **VP8/VP9** - Modern browsers ✓
+- **AV1** - Latest browsers ✓
+- **H.265** (HEVC) - Limited (Edge with extension)
+- **Theora** - Desktop browsers only
+
+### Audio Codecs
+
+- **AAC** - Universal support ✓
+- **MP3** - Universal support ✓
+- **Opus** - Modern browsers ✓
+- **Vorbis** - Most browsers ✓
+- **FLAC** - Most browsers ✓
+
+<Tip>
+  For maximum compatibility, use MP4 containers with H.264 video and AAC audio.
+</Tip>
+
+## Advanced Streaming Techniques
+
+### Custom Stream Processing
+
+Intercept and transform streams:
+
+```javascript
+file.on('stream', ({ stream, file, req }, callback) => {
+  if (req.destination === 'video') {
+    console.log('Video request detected')
+    
+    // You can pipe through a transform stream
+    // const transform = createSomeTransform()
+    // callback(stream.pipe(transform))
+  }
+})
+```
+
+### Iterator-based Streaming
+
+Use async iterators for fine-grained control:
+
+```javascript
+const file = torrent.files[0]
+
+for await (const chunk of file) {
+  // Process each chunk
+  console.log('Chunk:', chunk.length, 'bytes')
+  // Do something with chunk...
+}
+```
+
+### Preload Specific Pieces
+
+Prioritize specific pieces for streaming:
+
+```javascript
+// Select file for download
+file.select()
+
+// Or select specific piece range
+torrent.select(startPiece, endPiece, priority)
+
+// Mark pieces as critical priority
+torrent.critical(startPiece, endPiece)
+
+// Deselect when done
+file.deselect()
+```
+
+## Optimizing Streaming Performance
+
+### Client Configuration
+
+```javascript
+const client = new WebTorrent({
+  maxConns: 100,           // More connections = faster download
+  downloadLimit: -1,       // No bandwidth limit
+  uploadLimit: 1000000     // Limit upload to prioritize download
+})
+```
+
+### Torrent Options
+
+```javascript
+client.add(magnetURI, {
+  strategy: 'sequential',  // Sequential piece selection for streaming
+  storeCacheSlots: 50      // Larger cache for smoother playback
+}, torrent => {
+  // Torrent optimized for streaming
+})
+```
+
+### Monitor Buffer Health
+
+```javascript
+client.add(magnetURI, torrent => {
+  const file = torrent.files[0]
+  
+  // Monitor download progress
+  setInterval(() => {
+    const progress = file.progress
+    const downloaded = file.downloaded
+    const total = file.length
+    
+    console.log(`File: ${(progress * 100).toFixed(1)}%`)
+    console.log(`Downloaded: ${downloaded} / ${total} bytes`)
+  }, 1000)
+})
+```
+
+## Troubleshooting
+
+### No Peers Found
+
+<Warning>
+  If streaming is slow or not starting, check peer connectivity:
+</Warning>
+
+```javascript
+torrent.on('noPeers', announceType => {
+  console.log('No peers found via', announceType)
+  // Try adding more trackers or web seeds
+})
+```
+
+### Buffering Issues
+
+Increase cache and connections:
+
+```javascript
+client.add(magnetURI, {
+  storeCacheSlots: 100,    // Larger cache
+  maxWebConns: 8           // More web seed connections
+})
+```
+
+### Seeking Not Working
+
+<Note>
+  Seeking requires the HTTP server to support range requests. Make sure `client.createServer()` is called and the service worker is registered (browser) or the HTTP server is running (Node.js).
+</Note>
+
+## Complete Streaming Examples
+
+### Audio Player
+
+```javascript
+const magnetURI = 'magnet:?xt=urn:btih:...'  // Audio torrent
+
+client.add(magnetURI, torrent => {
+  const audioFile = torrent.files.find(f => 
+    f.name.endsWith('.mp3') || f.name.endsWith('.flac')
+  )
+  
+  const audio = document.querySelector('audio')
+  audioFile.streamTo(audio)
+  
+  // Show playlist
+  const playlist = document.querySelector('#playlist')
+  torrent.files.forEach(file => {
+    if (file.name.endsWith('.mp3')) {
+      const item = document.createElement('div')
+      item.textContent = file.name
+      item.onclick = () => file.streamTo(audio)
+      playlist.appendChild(item)
+    }
+  })
+})
+```
+
+### Video Gallery
+
+```javascript
+client.add(magnetURI, torrent => {
+  const videoFiles = torrent.files.filter(f =>
+    f.name.endsWith('.mp4') || f.name.endsWith('.webm')
+  )
+  
+  videoFiles.forEach(file => {
+    const container = document.createElement('div')
+    container.innerHTML = `
+      <h3>${file.name}</h3>
+      <video controls width="400"></video>
+    `
+    document.body.appendChild(container)
+    
+    const video = container.querySelector('video')
+    file.streamTo(video)
+  })
+})
+```

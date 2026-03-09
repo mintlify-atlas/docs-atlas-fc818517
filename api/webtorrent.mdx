@@ -1,0 +1,357 @@
+---
+title: WebTorrent Client API
+description: Complete API reference for the WebTorrent client class
+---
+
+## Constructor
+
+### `new WebTorrent([opts])`
+
+Create a new WebTorrent instance.
+
+<ParamField path="opts" type="object" optional>
+  Client configuration options
+  
+  <Expandable title="properties">
+    <ParamField path="maxConns" type="number" default={55}>
+      Max number of connections per torrent
+    </ParamField>
+    
+    <ParamField path="nodeId" type="string | Uint8Array" optional>
+      DHT protocol node ID (default: randomly generated)
+    </ParamField>
+    
+    <ParamField path="peerId" type="string | Uint8Array" optional>
+      Wire protocol peer ID (default: randomly generated)
+    </ParamField>
+    
+    <ParamField path="tracker" type="boolean | object" default={true}>
+      Enable trackers, or options object for Tracker
+    </ParamField>
+    
+    <ParamField path="dht" type="boolean | object" default={true}>
+      Enable DHT, or options object for DHT
+    </ParamField>
+    
+    <ParamField path="lsd" type="boolean" default={true}>
+      Enable BEP14 local service discovery
+    </ParamField>
+    
+    <ParamField path="utPex" type="boolean" default={true}>
+      Enable BEP11 Peer Exchange
+    </ParamField>
+    
+    <ParamField path="natUpnp" type="boolean | string" default={true}>
+      Enable NAT port mapping via NAT-UPnP (Node.js only). Set to `'permanent'` for permanent TTL
+    </ParamField>
+    
+    <ParamField path="natPmp" type="boolean" default={true}>
+      Enable NAT port mapping via NAT-PMP (Node.js only)
+    </ParamField>
+    
+    <ParamField path="webSeeds" type="boolean" default={true}>
+      Enable BEP19 web seeds
+    </ParamField>
+    
+    <ParamField path="utp" type="boolean" default={true}>
+      Enable BEP29 uTorrent transport protocol
+    </ParamField>
+    
+    <ParamField path="seedOutgoingConnections" type="boolean" default={true}>
+      Enable outgoing connections when seeding
+    </ParamField>
+    
+    <ParamField path="blocklist" type="Array<string> | string" optional>
+      List of IP addresses to block
+    </ParamField>
+    
+    <ParamField path="downloadLimit" type="number" default={-1}>
+      Max download speed (bytes/sec) over all torrents. `-1` = unlimited
+    </ParamField>
+    
+    <ParamField path="uploadLimit" type="number" default={-1}>
+      Max upload speed (bytes/sec) over all torrents. `-1` = unlimited
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+```js
+const client = new WebTorrent({
+  maxConns: 100,
+  downloadLimit: 1000000, // 1 MB/s
+  uploadLimit: 500000     // 500 KB/s
+})
+```
+
+## Static Properties
+
+### `WebTorrent.WEBRTC_SUPPORT`
+
+Boolean indicating whether WebRTC is natively supported in the current environment.
+
+```js
+if (WebTorrent.WEBRTC_SUPPORT) {
+  // WebRTC is supported
+} else {
+  // Use a fallback
+}
+```
+
+### `WebTorrent.VERSION`
+
+String representing the current WebTorrent version.
+
+## Methods
+
+### `client.add(torrentId, [opts], [ontorrent])`
+
+Start downloading a new torrent.
+
+<ParamField path="torrentId" type="string | Uint8Array | object" required>
+  Can be:
+  - Magnet URI (string)
+  - Torrent file (Uint8Array)
+  - Info hash (hex string or Uint8Array)
+  - Parsed torrent object
+  - HTTP/HTTPS URL to a torrent file (string)
+  - Filesystem path to a torrent file (Node.js only)
+</ParamField>
+
+<ParamField path="opts" type="object" optional>
+  Torrent-specific options. See [options page](/api/options) for details.
+</ParamField>
+
+<ParamField path="ontorrent" type="function" optional>
+  Callback called when torrent is ready (has metadata)
+</ParamField>
+
+<ResponseField name="return" type="Torrent">
+  Returns the torrent instance immediately (before metadata is available)
+</ResponseField>
+
+```js
+const torrent = client.add('magnet:?xt=urn:btih:...', torrent => {
+  console.log('Torrent ready:', torrent.name)
+  torrent.files.forEach(file => {
+    console.log('File:', file.name)
+  })
+})
+```
+
+### `client.seed(input, [opts], [onseed])`
+
+Start seeding a new torrent.
+
+<ParamField path="input" type="various" required>
+  Can be:
+  - Filesystem path to file or folder (string, Node.js only)
+  - W3C FileList object (browser only)
+  - W3C File/Blob object
+  - Typed array or array of numbers
+  - Node Buffer object
+  - Node Readable stream object
+  - Array of any of the above
+</ParamField>
+
+<ParamField path="opts" type="object" optional>
+  Options for create-torrent and client.add combined
+</ParamField>
+
+<ParamField path="onseed" type="function" optional>
+  Called when client has begun seeding
+</ParamField>
+
+<ResponseField name="return" type="Torrent">
+  Returns the torrent instance immediately
+</ResponseField>
+
+```js
+// Seed a file in the browser
+const file = document.querySelector('input[type=file]').files[0]
+client.seed(file, torrent => {
+  console.log('Seeding:', torrent.magnetURI)
+})
+```
+
+```js
+// Seed a file in Node.js
+client.seed('/path/to/file.mp4', torrent => {
+  console.log('Seeding:', torrent.magnetURI)
+})
+```
+
+### `client.remove(torrentId, [opts], [callback])`
+
+Remove a torrent from the client. Destroy all connections to peers and delete all saved file metadata.
+
+<ParamField path="torrentId" type="string | Buffer | Torrent" required>
+  Torrent to remove
+</ParamField>
+
+<ParamField path="opts" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="destroyStore" type="boolean" optional>
+      If truthy, delete torrent files from disk
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="callback" type="function" optional>
+  Called when torrent is fully destroyed
+</ParamField>
+
+```js
+await client.remove(torrentId)
+console.log('Torrent removed')
+```
+
+### `client.get(torrentId)`
+
+Returns the torrent with the given torrentId.
+
+<ParamField path="torrentId" type="string | Buffer | object | Torrent" required>
+  Torrent identifier
+</ParamField>
+
+<ResponseField name="return" type="Promise<Torrent | null>">
+  Promise that resolves to the torrent, or null if not found
+</ResponseField>
+
+```js
+const torrent = await client.get(infoHash)
+if (torrent) {
+  console.log('Found torrent:', torrent.name)
+}
+```
+
+### `client.destroy([callback])`
+
+Destroy the client, including all torrents and connections to peers.
+
+<ParamField path="callback" type="function" optional>
+  Called when client has gracefully closed
+</ParamField>
+
+```js
+client.destroy(err => {
+  if (err) throw err
+  console.log('Client destroyed')
+})
+```
+
+### `client.createServer([opts], [force])`
+
+Create an HTTP server to serve torrent contents.
+
+<ParamField path="opts" type="object" optional>
+  <Expandable title="properties">
+    <ParamField path="origin" type="string" default="*">
+      Allow requests from specific origin. `false` for same-origin.
+    </ParamField>
+    
+    <ParamField path="hostname" type="string" optional>
+      Only allow requests whose Host header matches (Node.js only)
+    </ParamField>
+    
+    <ParamField path="path" type="string" default="/webtorrent">
+      Base path for the server (Node.js only)
+    </ParamField>
+    
+    <ParamField path="controller" type="ServiceWorkerRegistration" required>
+      Service worker registration (browser only)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="force" type="'browser' | 'node'" optional>
+  Force specific implementation
+</ParamField>
+
+<ResponseField name="return" type="NodeServer | BrowserServer">
+  Server instance
+</ResponseField>
+
+```js
+// Node.js
+const instance = client.createServer()
+instance.server.listen(3000)
+
+// Browser
+const controller = await navigator.serviceWorker.register('./sw.min.js')
+await navigator.serviceWorker.ready
+client.createServer({ controller })
+```
+
+### `client.throttleDownload(rate)`
+
+Sets the maximum download speed.
+
+<ParamField path="rate" type="number" required>
+  Speed in bytes/sec. Use `-1` to disable throttling.
+</ParamField>
+
+```js
+client.throttleDownload(1000000) // Limit to 1 MB/s
+```
+
+### `client.throttleUpload(rate)`
+
+Sets the maximum upload speed.
+
+<ParamField path="rate" type="number" required>
+  Speed in bytes/sec. Use `-1` to disable throttling.
+</ParamField>
+
+```js
+client.throttleUpload(500000) // Limit to 500 KB/s
+```
+
+### `client.address()`
+
+Returns the address the client is listening on.
+
+<ResponseField name="return" type="object | null">
+  Address object with `address`, `family`, and `port` properties
+</ResponseField>
+
+## Properties
+
+### `client.torrents`
+
+<ResponseField name="torrents" type="Array<Torrent>">
+  Array of all torrents in the client
+</ResponseField>
+
+### `client.peerId`
+
+<ResponseField name="peerId" type="string">
+  Client peer ID (hex string)
+</ResponseField>
+
+### `client.downloadSpeed`
+
+<ResponseField name="downloadSpeed" type="number">
+  Total download speed for all torrents, in bytes/sec
+</ResponseField>
+
+### `client.uploadSpeed`
+
+<ResponseField name="uploadSpeed" type="number">
+  Total upload speed for all torrents, in bytes/sec
+</ResponseField>
+
+### `client.progress`
+
+<ResponseField name="progress" type="number">
+  Total download progress for all active torrents, from 0 to 1
+</ResponseField>
+
+### `client.ratio`
+
+<ResponseField name="ratio" type="number">
+  Aggregate seed ratio for all torrents (uploaded / downloaded)
+</ResponseField>
+
+## Events
+
+See the [Events reference](/api/events) for all client events.

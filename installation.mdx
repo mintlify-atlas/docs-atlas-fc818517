@@ -1,0 +1,202 @@
+---
+title: Installation
+description: Learn how to install WebTorrent in your Node.js or browser project
+---
+
+WebTorrent is available as an npm package and can be used in both Node.js and browser environments. This guide covers all installation methods.
+
+## Package Manager Installation
+
+Install WebTorrent using your preferred package manager:
+
+<CodeGroup>
+```bash npm
+npm install webtorrent
+```
+
+```bash yarn
+yarn add webtorrent
+```
+
+```bash pnpm
+pnpm add webtorrent
+```
+</CodeGroup>
+
+<Note>
+WebTorrent requires Node.js 16 or higher for server-side usage.
+</Note>
+
+## Browser Installation
+
+### Using a Bundler (Recommended)
+
+If you're using a module bundler like Webpack, Vite, or Rollup, simply import WebTorrent after installing it:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+```
+
+<Warning>
+**Webpack Users:** WebTorrent requires special webpack configuration. See the [webpack bundle config](https://github.com/webtorrent/webtorrent/blob/master/scripts/browser.webpack.js) used by WebTorrent for reference, or use the pre-built version below.
+</Warning>
+
+### Using Pre-built Bundle
+
+For webpack users or if you prefer to skip bundler configuration, use the pre-built version:
+
+```javascript
+import WebTorrent from 'webtorrent/dist/webtorrent.min.js'
+```
+
+### CDN Usage (ES Modules)
+
+You can load WebTorrent directly from a CDN without any build step:
+
+<CodeGroup>
+```html esm.sh
+<script type="module">
+  import WebTorrent from 'https://esm.sh/webtorrent/dist/webtorrent.min.js'
+  
+  const client = new WebTorrent()
+  // Your code here
+</script>
+```
+
+```html jsDelivr
+<script type="module">
+  import WebTorrent from 'https://cdn.jsdelivr.net/npm/webtorrent@latest/webtorrent.min.js'
+  
+  const client = new WebTorrent()
+  // Your code here
+</script>
+```
+</CodeGroup>
+
+<Tip>
+The CDN approach is perfect for quick prototypes and demos. For production apps, we recommend using a bundler for better optimization and caching.
+</Tip>
+
+## Environment-Specific Setup
+
+<Steps>
+
+### Browser Environment
+
+WebTorrent uses **WebRTC** for peer-to-peer communication in the browser. Modern browsers support this out of the box:
+
+- Chrome/Edge (Chromium)
+- Firefox
+- Safari
+- Opera
+
+<Note>
+**Important:** Browser-based WebTorrent clients can only connect to other WebRTC-enabled peers ("web peers"). They cannot connect to traditional BitTorrent peers using TCP/UDP.
+</Note>
+
+#### Service Worker Setup (Required for Streaming)
+
+To stream video and audio files in the browser, you need to set up a service worker:
+
+1. Copy the `sw.min.js` file from the WebTorrent package to your public directory
+2. Register the service worker in your application:
+
+```javascript
+const controller = await navigator.serviceWorker.register('./sw.min.js', { 
+  scope: './' 
+})
+await navigator.serviceWorker.ready
+client.createServer({ controller })
+```
+
+### Node.js Environment
+
+In Node.js, WebTorrent uses **TCP and UDP** to communicate with other BitTorrent clients:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+```
+
+<Warning>
+The standard `webtorrent` package in Node.js **cannot** connect to browser peers. To connect to both traditional peers AND browser peers, use [webtorrent-hybrid](https://github.com/webtorrent/webtorrent-hybrid) instead.
+</Warning>
+
+#### Hybrid Mode (Node.js + WebRTC)
+
+For Node.js applications that need to connect to browser peers:
+
+```bash
+npm install webtorrent-hybrid
+```
+
+```javascript
+import WebTorrent from 'webtorrent-hybrid'
+
+const client = new WebTorrent()
+// Can now connect to both traditional and web peers
+```
+
+</Steps>
+
+## Command Line Interface
+
+WebTorrent also provides a command-line tool for downloading and streaming torrents:
+
+```bash
+npm install -g webtorrent-cli
+```
+
+Once installed, you can use the `webtorrent` command:
+
+```bash
+# Download a torrent
+webtorrent "magnet:?xt=urn:btih:..."
+
+# Stream to a media player
+webtorrent "magnet:?xt=urn:btih:..." --vlc
+```
+
+<Card title="WebTorrent Desktop" icon="desktop" href="https://webtorrent.io/desktop">
+  For a complete desktop application with a GUI, check out WebTorrent Desktop for Mac, Windows, and Linux.
+</Card>
+
+## Verify Installation
+
+Test that WebTorrent is installed correctly:
+
+<CodeGroup>
+```javascript Node.js
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+console.log('WebTorrent version:', WebTorrent.VERSION)
+console.log('WebRTC support:', WebTorrent.WEBRTC_SUPPORT)
+```
+
+```javascript Browser
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+console.log('WebTorrent version:', WebTorrent.VERSION)
+console.log('WebRTC support:', WebTorrent.WEBRTC_SUPPORT)
+
+if (!WebTorrent.WEBRTC_SUPPORT) {
+  console.error('WebRTC not supported in this browser')
+}
+```
+</CodeGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quick Start Guide" icon="rocket" href="/quickstart">
+    Learn the basics with working examples
+  </Card>
+  <Card title="API Reference" icon="code" href="/api">
+    Explore the complete WebTorrent API
+  </Card>
+</CardGroup>

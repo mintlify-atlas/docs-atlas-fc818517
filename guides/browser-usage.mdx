@@ -1,0 +1,324 @@
+---
+title: Using WebTorrent in the Browser
+description: Learn how to use WebTorrent in browser environments with WebRTC support
+---
+
+WebTorrent works seamlessly in the browser using WebRTC (Web Real-Time Communication) for peer-to-peer data transfer. No plugins, extensions, or installations required—just JavaScript.
+
+## Installation
+
+There are several ways to include WebTorrent in your browser application:
+
+<Tabs>
+  <Tab title="CDN (ESM)">
+    ```html
+    <script type='module'>
+      import WebTorrent from 'https://esm.sh/webtorrent/dist/webtorrent.min.js'
+    </script>
+    ```
+  </Tab>
+  <Tab title="npm + Bundler">
+    ```bash
+    npm install webtorrent
+    ```
+    
+    Then import in your JavaScript:
+    ```javascript
+    import WebTorrent from 'webtorrent'
+    ```
+  </Tab>
+  <Tab title="Standalone Script">
+    ```html
+    <script type='module'>
+      import WebTorrent from 'webtorrent.min.js'
+    </script>
+    ```
+  </Tab>
+</Tabs>
+
+## Browser Requirements
+
+WebTorrent requires WebRTC support. It works in:
+- Chrome
+- Firefox
+- Opera
+- Safari
+- Edge
+
+You can check for WebRTC support programmatically:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+if (WebTorrent.WEBRTC_SUPPORT) {
+  // WebRTC is supported
+  const client = new WebTorrent()
+} else {
+  // Fallback for browsers without WebRTC
+  console.error('WebRTC not supported')
+}
+```
+
+## Basic Usage
+
+<Steps>
+  <Step title="Create a WebTorrent client">
+    Initialize a new WebTorrent instance:
+    
+    ```javascript
+    import WebTorrent from 'webtorrent'
+    
+    const client = new WebTorrent()
+    
+    client.on('error', err => {
+      console.error('Client error:', err)
+    })
+    ```
+  </Step>
+
+  <Step title="Download a torrent">
+    Add a torrent using a magnet URI:
+    
+    ```javascript
+    const magnetURI = 'magnet:?xt=urn:btih:...'
+    
+    client.add(magnetURI, torrent => {
+      console.log('Torrent ready:', torrent.name)
+      console.log('Files:', torrent.files.length)
+      
+      for (const file of torrent.files) {
+        console.log('File:', file.name, file.length, 'bytes')
+      }
+    })
+    ```
+  </Step>
+
+  <Step title="Access torrent files">
+    Once the torrent metadata is loaded, you can access its files:
+    
+    ```javascript
+    client.add(magnetURI, torrent => {
+      // Get the first file
+      const file = torrent.files[0]
+      
+      // Or find a specific file
+      const videoFile = torrent.files.find(f => f.name.endsWith('.mp4'))
+    })
+    ```
+  </Step>
+</Steps>
+
+## Setting Up the HTTP Server
+
+To stream files in the browser, you need to set up a service worker-based HTTP server:
+
+<Steps>
+  <Step title="Download the service worker">
+    Download `sw.min.js` from the [WebTorrent repository](https://github.com/webtorrent/webtorrent/blob/master/sw.min.js) and place it in your project root.
+  </Step>
+
+  <Step title="Register the service worker">
+    ```javascript
+    const controller = await navigator.serviceWorker.register('./sw.min.js', { 
+      scope: './' 
+    })
+    await navigator.serviceWorker.ready
+    ```
+  </Step>
+
+  <Step title="Create the server">
+    ```javascript
+    client.createServer({ controller })
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  The service worker is required for streaming functionality in the browser. Without it, you can still download files but won't be able to use `file.streamTo()` or `file.streamURL`.
+</Note>
+
+## Complete Example
+
+Here's a complete example that downloads and displays a video:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+// Sintel, a free Creative Commons movie
+const magnetURI = 'magnet:?xt=urn:btih:08ada5a7a6183aae1e09d831df6748d566095a10&dn=Sintel'
+
+async function downloadAndPlay() {
+  // Register service worker
+  const controller = await navigator.serviceWorker.register('./sw.min.js', { 
+    scope: './' 
+  })
+  await navigator.serviceWorker.ready
+  
+  // Create server for streaming
+  client.createServer({ controller })
+  
+  // Add torrent
+  client.add(magnetURI, torrent => {
+    console.log('Client is downloading:', torrent.infoHash)
+    
+    // Find the video file
+    const file = torrent.files.find(f => f.name.endsWith('.mp4'))
+    
+    // Stream to video element
+    const video = document.querySelector('video')
+    file.streamTo(video)
+    
+    // Show progress
+    const interval = setInterval(() => {
+      console.log('Progress:', (torrent.progress * 100).toFixed(1) + '%')
+      console.log('Download speed:', torrent.downloadSpeed, 'bytes/sec')
+      console.log('Peers:', torrent.numPeers)
+    }, 1000)
+    
+    torrent.on('done', () => {
+      console.log('Download complete!')
+      clearInterval(interval)
+    })
+  })
+}
+
+downloadAndPlay()
+```
+
+## Seeding Files in the Browser
+
+You can create and seed torrents directly from files in the browser:
+
+```javascript
+import dragDrop from 'drag-drop'
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent()
+
+// When user drops files on the browser
+dragDrop('body', files => {
+  client.seed(files, torrent => {
+    console.log('Client is seeding:', torrent.infoHash)
+    console.log('Magnet URI:', torrent.magnetURI)
+    
+    // Share the magnet URI with others
+    document.querySelector('#magnetLink').textContent = torrent.magnetURI
+  })
+})
+```
+
+<Tip>
+  When seeding from the browser, you're creating a "web peer" that can be connected to by other WebTorrent clients (browsers) or hybrid clients like WebTorrent Desktop.
+</Tip>
+
+## Working with Different File Types
+
+### Getting File as Blob
+
+```javascript
+const file = torrent.files[0]
+const blob = await file.blob()
+const url = URL.createObjectURL(blob)
+
+// Use the blob URL
+const a = document.createElement('a')
+a.href = url
+a.download = file.name
+a.textContent = 'Download ' + file.name
+document.body.appendChild(a)
+```
+
+### Getting File as ArrayBuffer
+
+```javascript
+const file = torrent.files[0]
+const arrayBuffer = await file.arrayBuffer()
+const data = new Uint8Array(arrayBuffer)
+console.log('File data:', data)
+```
+
+### Streaming with ReadableStream
+
+```javascript
+const file = torrent.files[0]
+const stream = file.stream()
+
+const reader = stream.getReader()
+while (true) {
+  const { done, value } = await reader.read()
+  if (done) break
+  console.log('Received chunk:', value.length, 'bytes')
+}
+```
+
+## Client Configuration
+
+You can configure the WebTorrent client with various options:
+
+```javascript
+const client = new WebTorrent({
+  maxConns: 55,              // Max connections per torrent
+  tracker: true,             // Enable trackers
+  dht: true,                 // Enable DHT (not available in browser)
+  webSeeds: true,            // Enable web seeds
+  downloadLimit: -1,         // No download limit (-1 = unlimited)
+  uploadLimit: -1            // No upload limit
+})
+```
+
+<Warning>
+  DHT (Distributed Hash Table) is not available in browser environments. Browser peers can only connect to other WebRTC peers and must rely on trackers for peer discovery.
+</Warning>
+
+## Handling Errors
+
+Always listen for errors at both the client and torrent level:
+
+```javascript
+const client = new WebTorrent()
+
+// Client-level errors (fatal)
+client.on('error', err => {
+  console.error('Fatal client error:', err)
+  // Client is automatically destroyed
+})
+
+// Torrent-level errors
+client.add(magnetURI, torrent => {
+  torrent.on('error', err => {
+    console.error('Torrent error:', err)
+    // Torrent is automatically destroyed, but client continues
+  })
+})
+```
+
+## Cleanup
+
+Always destroy the client when you're done:
+
+```javascript
+// Remove a specific torrent
+await client.remove(torrentId)
+
+// Destroy the entire client
+client.destroy(err => {
+  if (err) console.error('Error destroying client:', err)
+  else console.log('Client destroyed')
+})
+```
+
+<Warning>
+  In the browser, torrent data is stored in memory or IndexedDB. Make sure to manually destroy torrents when the page closes (during the `beforeunload` event) to clean up storage.
+</Warning>
+
+## Webpack Configuration
+
+If you're using Webpack, you may need additional configuration. See the [webpack config used by WebTorrent](https://github.com/webtorrent/webtorrent/blob/master/scripts/browser.webpack.js) for reference.
+
+Alternatively, use the pre-built version:
+
+```javascript
+import WebTorrent from 'webtorrent/dist/webtorrent.min.js'
+```

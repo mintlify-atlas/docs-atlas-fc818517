@@ -1,0 +1,604 @@
+---
+title: 'Performance Optimization'
+description: 'Optimize WebTorrent for maximum speed, efficiency, and resource usage'
+---
+
+WebTorrent is designed to be fast and efficient, but there are many ways to optimize performance for your specific use case. This guide covers bandwidth throttling, connection management, memory optimization, and platform-specific tuning.
+
+## Bandwidth Management
+
+### Download and Upload Throttling
+
+Control bandwidth usage across all torrents with global throttle settings:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+const client = new WebTorrent({
+  downloadLimit: 1000000, // 1 MB/s in bytes/sec
+  uploadLimit: 500000     // 500 KB/s in bytes/sec
+})
+
+// Or set dynamically
+client.throttleDownload(2000000) // 2 MB/s
+client.throttleUpload(1000000)   // 1 MB/s
+
+// Disable throttling (use full bandwidth)
+client.throttleDownload(-1)
+client.throttleUpload(-1)
+
+// Block all downloads/uploads
+client.throttleDownload(0)
+client.throttleUpload(0)
+```
+
+<Note>
+  Throttling affects all torrents in the client. Use it to prevent WebTorrent from consuming all available bandwidth.
+</Note>
+
+### Monitoring Speed
+
+Track transfer speeds to make informed throttling decisions:
+
+```javascript
+// Global client speeds
+setInterval(() => {
+  console.log('Download:', (client.downloadSpeed / 1024 / 1024).toFixed(2), 'MB/s')
+  console.log('Upload:', (client.uploadSpeed / 1024 / 1024).toFixed(2), 'MB/s')
+}, 1000)
+
+// Per-torrent speeds
+torrent.on('download', () => {
+  console.log('Torrent progress:', (torrent.progress * 100).toFixed(2), '%')
+  console.log('Download speed:', torrent.downloadSpeed, 'bytes/sec')
+  console.log('Upload speed:', torrent.uploadSpeed, 'bytes/sec')
+})
+```
+
+<Accordion title="Calculate Seed Ratio">
+  ```javascript
+  function getSeedRatio(torrent) {
+    return torrent.uploaded / (torrent.downloaded || 1)
+  }
+
+  // Global ratio across all torrents
+  console.log('Client ratio:', client.ratio)
+
+  // Per-torrent ratio
+  console.log('Torrent ratio:', getSeedRatio(torrent))
+  ```
+</Accordion>
+
+## Connection Management
+
+### Maximum Connections
+
+Control the number of simultaneous peer connections:
+
+```javascript
+const client = new WebTorrent({
+  maxConns: 55 // default, max connections per torrent
+})
+```
+
+<Warning>
+  More connections don't always mean better performance. Too many connections can overwhelm your network and CPU. The default of 55 is optimal for most use cases.
+</Warning>
+
+### Upload Slots and Choking Strategy
+
+Configure how many peers can download from you simultaneously:
+
+```javascript
+client.add(torrentId, {
+  uploads: 10, // number of upload slots (default: 10)
+  alwaysChokeSeeders: true // choke peers that are seeders (default: true)
+})
+
+// Disable uploads entirely (leeching mode - not recommended)
+client.add(torrentId, {
+  uploads: false
+})
+```
+
+<Info>
+  WebTorrent uses optimistic unchoking to give new peers a chance while maintaining fast uploads to proven peers. This is handled automatically.
+</Info>
+
+### Web Seed Connections
+
+Limit concurrent HTTP connections to web seeds:
+
+```javascript
+client.add(torrentId, {
+  maxWebConns: 4 // default is 4 per web seed
+})
+```
+
+## Memory Optimization
+
+### Chunk Store Caching
+
+Reduce disk I/O by caching torrent pieces in memory:
+
+```javascript
+client.add(torrentId, {
+  storeCacheSlots: 20 // default, number of pieces to cache
+})
+
+// Disable caching (minimal memory, more I/O)
+client.add(torrentId, {
+  storeCacheSlots: 0
+})
+
+// Aggressive caching (more memory, less I/O)
+client.add(torrentId, {
+  storeCacheSlots: 100
+})
+```
+
+<Accordion title="Cache Size Calculation">
+  ```javascript
+  // Calculate memory usage from cache settings
+  function calculateCacheSize(torrent, cacheSlots) {
+    const pieceLength = torrent.pieceLength
+    const cacheBytes = pieceLength * cacheSlots
+    const cacheMB = (cacheBytes / 1024 / 1024).toFixed(2)
+    
+    console.log(`Cache size: ${cacheMB} MB`)
+    console.log(`Piece length: ${pieceLength} bytes`)
+    console.log(`Cache slots: ${cacheSlots}`)
+    
+    return cacheBytes
+  }
+
+  torrent.on('ready', () => {
+    calculateCacheSize(torrent, 20)
+  })
+  ```
+</Accordion>
+
+### Memory Stores
+
+Use memory-based storage for temporary or small torrents:
+
+```javascript
+import MemoryChunkStore from 'memory-chunk-store'
+
+client.add(torrentId, {
+  store: MemoryChunkStore // keep entire torrent in RAM
+})
+```
+
+<Warning>
+  Memory stores are fast but use significant RAM. Only use for small torrents or when disk I/O is a bottleneck.
+</Warning>
+
+## Download Strategy
+
+### Piece Selection Strategy
+
+Choose between sequential and rarest-first piece selection:
+
+```javascript
+// Sequential: download pieces in order (best for streaming)
+client.add(torrentId, {
+  strategy: 'sequential'
+})
+
+// Rarest: download rarest pieces first (best for seeding)
+client.add(torrentId, {
+  strategy: 'rarest'
+})
+```
+
+<CardGroup cols={2}>
+  <Card title="Sequential Strategy" icon="arrow-down">
+    **Best for:** Video/audio streaming, progressive downloads
+    
+    Downloads pieces in order from start to finish. Enables immediate playback of media files.
+  </Card>
+  <Card title="Rarest-First Strategy" icon="shuffle">
+    **Best for:** Maximizing swarm health, fast completion
+    
+    Prioritizes rarest pieces to improve overall availability in the swarm.
+  </Card>
+</CardGroup>
+
+### Selective Downloads
+
+Download only specific files to save bandwidth and storage:
+
+```javascript
+client.add(torrentId, torrent => {
+  // Deselect all files initially
+  torrent.deselect(0, torrent.pieces.length - 1, false)
+  
+  // Select only video files
+  torrent.files.forEach(file => {
+    if (file.name.endsWith('.mp4') || file.name.endsWith('.mkv')) {
+      file.select()
+    }
+  })
+})
+
+// Or start with no pieces selected
+client.add(torrentId, {
+  deselect: true
+}, torrent => {
+  // Manually select what you need
+  torrent.files[0].select()
+})
+```
+
+<Accordion title="Dynamic File Selection">
+  ```javascript
+  // Select files on demand
+  function selectFileByIndex(torrent, index) {
+    const file = torrent.files[index]
+    
+    if (!file.progress === 1) {
+      file.select()
+      console.log('Selected:', file.name)
+    }
+  }
+
+  // Deselect completed or unwanted files
+  function deselectFile(torrent, index) {
+    const file = torrent.files[index]
+    file.deselect()
+    console.log('Deselected:', file.name)
+  }
+
+  // Priority selection with auto-deselect
+  torrent.files.forEach((file, i) => {
+    file.on('done', () => {
+      console.log('Completed:', file.name)
+      // Optionally deselect to free up resources
+      file.deselect()
+    })
+  })
+  ```
+</Accordion>
+
+## Node.js Optimizations
+
+### Enable uTP (Micro Transport Protocol)
+
+Use uTP for better congestion control and NAT traversal:
+
+```javascript
+import WebTorrent from 'webtorrent'
+
+// Check if uTP is supported
+if (WebTorrent.UTP_SUPPORT) {
+  const client = new WebTorrent({
+    utp: true // enabled by default if utp-native is installed
+  })
+}
+```
+
+<Info>
+  Install the optional dependency: `npm install utp-native`
+  
+  uTP provides better bandwidth sharing with other applications and improved performance in congested networks.
+</Info>
+
+### NAT Traversal
+
+Enable automatic port mapping for better connectivity:
+
+```javascript
+const client = new WebTorrent({
+  natUpnp: true,  // UPnP port mapping (default: true)
+  natPmp: true,   // NAT-PMP port mapping (default: true)
+  torrentPort: 0, // 0 = auto-select port
+  dhtPort: 0      // 0 = auto-select port
+})
+
+// Use permanent UPnP leases if temporary leases fail
+const client2 = new WebTorrent({
+  natUpnp: 'permanent'
+})
+```
+
+### DHT Configuration
+
+Tune DHT settings for optimal peer discovery:
+
+```javascript
+const client = new WebTorrent({
+  dht: {
+    bootstrap: [
+      'router.bittorrent.com:6881',
+      'router.utorrent.com:6881',
+      'dht.transmissionbt.com:6881'
+    ],
+    // Advanced DHT options
+    concurrency: 16,
+    maxTables: 1000
+  }
+})
+```
+
+### Local Service Discovery
+
+Enable LSD to find peers on your local network:
+
+```javascript
+const client = new WebTorrent({
+  lsd: true // enabled by default in Node.js
+})
+```
+
+<Note>
+  LSD is very effective for local network transfers, providing near-instant peer discovery without external trackers or DHT.
+</Note>
+
+## Browser Optimizations
+
+### File System Access API
+
+Use the File System Access API for better performance in supported browsers:
+
+```javascript
+// Request directory access from user
+const dirHandle = await window.showDirectoryPicker()
+
+client.add(torrentId, {
+  rootDir: dirHandle // use File System Access API
+})
+```
+
+<Info>
+  The File System Access API provides better performance than IndexedDB and allows direct file system access. Supported in Chrome 86+, Edge 86+.
+</Info>
+
+### Service Worker Streaming
+
+Optimize streaming by properly configuring the service worker:
+
+```javascript
+// Register service worker with proper scope
+const registration = await navigator.serviceWorker.register('./sw.min.js', {
+  scope: './'
+})
+
+await navigator.serviceWorker.ready
+
+const client = new WebTorrent()
+client.createServer({ controller: registration })
+
+client.add(magnetURI, torrent => {
+  const file = torrent.files[0]
+  
+  // Stream URL automatically uses service worker
+  videoElement.src = file.streamURL
+})
+```
+
+### WebRTC Configuration
+
+Optimize WebRTC connections for browser environments:
+
+```javascript
+const client = new WebTorrent({
+  tracker: {
+    wrtc: customWRTC, // custom WebRTC implementation if needed
+    rtcConfig: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
+      ]
+    }
+  }
+})
+```
+
+## Monitoring and Debugging
+
+### Performance Metrics
+
+```javascript
+// Comprehensive stats logging
+function logStats(torrent) {
+  const stats = {
+    progress: (torrent.progress * 100).toFixed(2) + '%',
+    downloadSpeed: (torrent.downloadSpeed / 1024).toFixed(2) + ' KB/s',
+    uploadSpeed: (torrent.uploadSpeed / 1024).toFixed(2) + ' KB/s',
+    downloaded: (torrent.downloaded / 1024 / 1024).toFixed(2) + ' MB',
+    uploaded: (torrent.uploaded / 1024 / 1024).toFixed(2) + ' MB',
+    ratio: (torrent.uploaded / (torrent.downloaded || 1)).toFixed(2),
+    peers: torrent.numPeers,
+    wires: torrent.wires.length,
+    timeRemaining: torrent.timeRemaining,
+    downloadedPercentage: (torrent.progress * 100).toFixed(2)
+  }
+  
+  console.table(stats)
+}
+
+setInterval(() => logStats(torrent), 5000)
+```
+
+### Debug Logging
+
+Enable detailed logging for troubleshooting:
+
+```javascript
+// In Node.js
+process.env.DEBUG = 'webtorrent*'
+
+// Or specific modules
+process.env.DEBUG = 'webtorrent,bittorrent-dht'
+
+// In browser console
+localStorage.setItem('debug', 'webtorrent*')
+
+// Then reload the page
+```
+
+<Accordion title="Performance Monitoring Dashboard">
+  ```javascript
+  class PerformanceMonitor {
+    constructor(client) {
+      this.client = client
+      this.metrics = []
+    }
+
+    start() {
+      this.interval = setInterval(() => {
+        const metric = {
+          timestamp: Date.now(),
+          downloadSpeed: this.client.downloadSpeed,
+          uploadSpeed: this.client.uploadSpeed,
+          torrents: this.client.torrents.length,
+          totalPeers: this.client.torrents.reduce((sum, t) => 
+            sum + t.numPeers, 0)
+        }
+        
+        this.metrics.push(metric)
+        
+        // Keep last 100 metrics only
+        if (this.metrics.length > 100) {
+          this.metrics.shift()
+        }
+      }, 1000)
+    }
+
+    stop() {
+      clearInterval(this.interval)
+    }
+
+    getAverageSpeed() {
+      const recent = this.metrics.slice(-10)
+      const avgDown = recent.reduce((sum, m) => 
+        sum + m.downloadSpeed, 0) / recent.length
+      const avgUp = recent.reduce((sum, m) => 
+        sum + m.uploadSpeed, 0) / recent.length
+      
+      return { download: avgDown, upload: avgUp }
+    }
+  }
+
+  // Usage
+  const monitor = new PerformanceMonitor(client)
+  monitor.start()
+
+  // Later
+  const speeds = monitor.getAverageSpeed()
+  console.log('Avg download:', speeds.download, 'bytes/sec')
+  monitor.stop()
+  ```
+</Accordion>
+
+## Advanced Tuning
+
+### Pause and Resume
+
+Pause torrents to free up resources:
+
+```javascript
+// Pause torrent (stops all transfers)
+torrent.pause()
+
+// Resume torrent
+torrent.resume()
+
+// Start paused
+client.add(torrentId, {
+  paused: true
+})
+```
+
+### Seeding Behavior
+
+Control seeding behavior when torrent is complete:
+
+```javascript
+const client = new WebTorrent({
+  seedOutgoingConnections: false // only accept incoming when seeding
+})
+```
+
+<Info>
+  Disabling outgoing connections while seeding reduces bandwidth usage but may decrease your upload contribution to the swarm.
+</Info>
+
+### Skip Verification
+
+Skip piece verification for faster startup on trusted data:
+
+```javascript
+client.add(torrentId, {
+  skipVerify: true, // don't verify existing pieces
+  bitfield: savedBitfield // resume with known piece state
+})
+```
+
+<Warning>
+  Only use `skipVerify` with trusted data sources. Corrupted pieces will cause errors when accessed.
+</Warning>
+
+## Best Practices Checklist
+
+<CardGroup cols={2}>
+  <Card title="Bandwidth" icon="gauge">
+    - Set appropriate throttle limits
+    - Monitor speed metrics
+    - Use selective downloads
+    - Enable web seeds for popular content
+  </Card>
+
+  <Card title="Connections" icon="network-wired">
+    - Keep maxConns at default (55)
+    - Configure upload slots appropriately
+    - Enable NAT traversal in Node.js
+    - Use DHT and LSD for peer discovery
+  </Card>
+
+  <Card title="Memory" icon="memory">
+    - Tune cache slots for your use case
+    - Use memory stores only for small files
+    - Monitor memory usage over time
+    - Clean up completed torrents
+  </Card>
+
+  <Card title="Strategy" icon="chess">
+    - Use sequential for streaming
+    - Use rarest-first for seeding
+    - Deselect unwanted files
+    - Pause inactive torrents
+  </Card>
+</CardGroup>
+
+## Platform-Specific Tips
+
+<Accordion title="Node.js Performance Tips">
+  - Install `utp-native` for uTP support
+  - Enable NAT traversal for better connectivity
+  - Use file system storage for large torrents
+  - Enable DHT, LSD, and PEX
+  - Consider using a blocklist for security
+  - Run on a machine with stable internet
+</Accordion>
+
+<Accordion title="Browser Performance Tips">
+  - Use File System Access API when available
+  - Configure service worker properly
+  - Limit concurrent torrents
+  - Use smaller cache slots
+  - Rely on WebRTC trackers
+  - Test STUN/TURN server connectivity
+</Accordion>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="shield" href="/advanced/security">
+    Learn about security best practices
+  </Card>
+  <Card title="API Reference" icon="book" href="/api/client">
+    Explore the complete API documentation
+  </Card>
+</CardGroup>
